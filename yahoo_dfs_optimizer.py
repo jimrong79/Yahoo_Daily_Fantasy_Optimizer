@@ -2,6 +2,9 @@ from pulp import *
 import numpy as np
 import pandas as pd
 
+dvp = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
+print (dvp.std(dvp['PG']))
+
 players = pd.read_csv("Yahoo_DF_player_export.csv")
 
 players["PG"] = (players["Position"] == 'PG').astype(float)
@@ -9,12 +12,17 @@ players["SG"] = (players["Position"] == 'SG').astype(float)
 players["SF"] = (players["Position"] == 'SF').astype(float)
 players["PF"] = (players["Position"] == 'PF').astype(float)
 players["C"] = (players["Position"] == 'C').astype(float)
+players["G"] = (players["Position"] == 'PG').astype(float)
+players["F"] = (players["Position"] == 'SF').astype(float)
 players["Salary"] = players["Salary"].astype(float)
+
+players.loc[players['SG'] == 1, ['G']] = 1
+players.loc[players['PF'] == 1, ['F']] = 1
 
 players.loc[players["Injury Status"] == 'INJ', 'FPPG'] = 0
 players.loc[players["Injury Status"] == 'O', 'FPPG'] = 0
-players.loc[players["Time"] == '7:30PM EDT', 'FPPG'] = 0
-players.loc[players["Time"] == '7:00PM EDT', 'FPPG'] = 0
+##players.loc[players["Time"] == '7:30PM EDT', 'FPPG'] = 0
+##players.loc[players["Time"] == '7:00PM EDT', 'FPPG'] = 0
 model = pulp.LpProblem("Yahoo", pulp.LpMaximize)
 total_points = {}
 cost = {}
@@ -42,8 +50,8 @@ for i, player in players.iterrows():
     SFs[decision_var] = player["SF"]
     PFs[decision_var] = player["PF"]
     Cs[decision_var] = player["C"]
-##    Gs[decision_var] = player["PG"] or player["SG"]
-##    Fs[decision_var] = player["SF"] or player["PF"]
+    Gs[decision_var] = player["PG"] or player["SG"]
+    Fs[decision_var] = player["SF"] or player["PF"]
     number_of_players[decision_var] = 1.0
 
 
@@ -61,17 +69,22 @@ SG_constraint = pulp.LpAffineExpression(SGs)
 SF_constraint = pulp.LpAffineExpression(SFs)
 PF_constraint = pulp.LpAffineExpression(PFs)
 C_constraint = pulp.LpAffineExpression(Cs)
-##G_constraint = pulp.LpAffineExpression(Gs)
-##F_constraint = pulp.LpAffineExpression(Fs)
+G_constraint = pulp.LpAffineExpression(Gs)
+F_constraint = pulp.LpAffineExpression(Fs)
 total_players = pulp.LpAffineExpression(number_of_players)
 
-model += (PG_constraint <= 2)
-model += (SG_constraint <= 2)
-model += (SF_constraint <= 2)
-model += (PF_constraint <= 2)
+model += (PG_constraint <= 3)
+model += (PG_constraint >= 1)
+model += (SG_constraint <= 3)
+model += (SG_constraint >= 1)
+model += (SF_constraint <= 3)
+model += (SF_constraint >= 1)
+model += (PF_constraint <= 3)
+model += (PF_constraint >= 1)
 model += (C_constraint <= 2)
-##model += (G_constraint <= 1)
-##model += (F_constraint <= 1)
+model += (C_constraint >= 1)
+model += (G_constraint >= 3)
+model += (F_constraint >= 3)
 model += (total_players <= 8)
 
 #pulp.pulpTestAll()
@@ -80,10 +93,11 @@ model.status
 model.solve()
 
 players["is_drafted"] = 0.0
-
 for var in model.variables():
     # Set is drafted to the value determined by the LP
-    players.iloc[int(var.name[1:]),17] = var.varValue # column 11 = is_drafted
+    players.iloc[int(var.name[1:]),19] = var.varValue # column 11 = is_drafted
+
+players.to_csv('result.csv')
 
 my_team = players[players["is_drafted"] == 1.0]
 my_team = my_team[["First Name", "Last Name", "Position","Team","Salary","FPPG"]]
