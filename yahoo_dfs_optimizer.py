@@ -1,9 +1,14 @@
 from pulp import *
 import numpy as np
 import pandas as pd
+import statistics 
 
-dvp = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
-print (dvp.std(dvp['PG']))
+dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
+dvp = dvp_list[0]
+PG_dvp = dvp['PG']
+
+
+print ((PG_dvp.std()[0]))
 
 players = pd.read_csv("Yahoo_DF_player_export.csv")
 
