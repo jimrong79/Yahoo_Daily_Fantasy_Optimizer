@@ -5,10 +5,29 @@ import statistics
 
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
 dvp = dvp_list[0]
-PG_dvp = dvp['PG']
 
+# mapping team names to yahoo format
+team_name_transfer_dict_espn = {"LA Clippers" : "LAC", "San Antonio": "SA", "Phoenix": "PHO", "Atlanta":"ATL", "Dallas":"DAL", "Portland":"POR", 
+                                "Minnesota":"MIN", "New Orleans":"NO", "Detroit":"DET", "Brooklyn":"BKN", "Toronto":"TOR", "LA Lakers":"LAL", "Miami":"MIA", 
+                                "Houston":"HOU", "Milwaukee":"MIL", "Charlotte":"CHA", "Boston":"BOS", "Philadelphia":"PHI", "Indiana":"IND", "Denver":"DEN", 
+                                "Utah":"UTA", "Memphis":"MEM", "Washington":"WAS", "Golden State":"GS", "Chicago":"CHI", "Cleveland":"CLE", "New York":"NY", 
+                                "Oklahoma City":"OKC", "Orlando":"ORL", "Sacramento":"SAC"}
 
-print ((PG_dvp.std()[0]))
+team_stats_list = pd.read_html("http://www.espn.com/nba/hollinger/teamstats")
+team_stats = team_stats_list[0]
+team_stats.columns = team_stats.iloc[1]
+team_stats = team_stats.drop(team_stats.index[1])
+team_stats = team_stats.drop(team_stats.index[0])
+
+team_stats = team_stats.replace({"TEAM": team_name_transfer_dict_espn})
+team_stats["PACE"] = team_stats["PACE"].astype(float)
+team_stats.set_index("TEAM", inplace = True)
+
+team_stats.to_csv("team_stats.csv")
+total_teams = team_stats.shape[0]
+#print (team_stats.loc[["LAL"], ["PACE"]].values[0][0])
+#print (team_stats.get_value("ATL", "PACE"))
+pace_avg = round(team_stats["PACE"].mean(), 2)
 
 players = pd.read_csv("Yahoo_DF_player_export.csv")
 
@@ -20,6 +39,12 @@ players["C"] = (players["Position"] == 'C').astype(float)
 players["G"] = (players["Position"] == 'PG').astype(float)
 players["F"] = (players["Position"] == 'SF').astype(float)
 players["Salary"] = players["Salary"].astype(float)
+
+for i, row in players.iterrows():
+    
+    multiplier = (team_stats.at[row.at["Team"], "PACE"]) /  pace_avg * (team_stats.at[row.at["Opponent"], "PACE"]) /  pace_avg
+    players.at[i, 'FPPG'] = round(multiplier * players.at[i, 'FPPG'], 1)
+    print (multiplier)
 
 players.loc[players['SG'] == 1, ['G']] = 1
 players.loc[players['PF'] == 1, ['F']] = 1
@@ -92,7 +117,7 @@ model += (G_constraint >= 3)
 model += (F_constraint >= 3)
 model += (total_players <= 8)
 
-#pulp.pulpTestAll()
+pulp.pulpTestAll()
 
 model.status
 model.solve()
@@ -100,7 +125,7 @@ model.solve()
 players["is_drafted"] = 0.0
 for var in model.variables():
     # Set is drafted to the value determined by the LP
-    players.iloc[int(var.name[1:]),19] = var.varValue # column 11 = is_drafted
+    players.iloc[int(var.name[1:]),19] = var.varValue # column 20 = is_drafted
 
 players.to_csv('result.csv')
 
@@ -110,5 +135,3 @@ my_team = my_team[["First Name", "Last Name", "Position","Team","Salary","FPPG"]
 print (my_team)
 print ("Total used amount of salary cap: {}".format(my_team["Salary"].sum()))
 print ("Projected points for tonight: {}".format(my_team["FPPG"].sum().round(1)))
-
-    
