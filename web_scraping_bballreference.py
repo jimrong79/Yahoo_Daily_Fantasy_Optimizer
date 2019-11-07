@@ -1,6 +1,8 @@
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 import pandas as pd
+import requests
+import time
 
 """
 # NBA season 
@@ -21,7 +23,7 @@ players_stats = [[td.getText() for td in rows[i].findAll('td')] for i in range(l
 stats = pd.DataFrame(players_stats, columns = headers)
 """
 
-
+"""
 url = "https://basketballmonster.com/DailyEaseRankings.aspx"
 html = urlopen(url)
 soup = BeautifulSoup(html,features="lxml")
@@ -37,9 +39,36 @@ for i in range(len(dvp_stats)):
 dvp_stats_df = pd.DataFrame(dvp_stats, columns = headers)
 
 print (dvp_stats_df.head(31))
+"""
 
 
 
 url = "https://basketballmonster.com/DailyEaseRankings.aspx"
-html = urlopen(url)
-soup = BeautifulSoup(html,features="lxml")
+
+with requests.Session() as session:
+
+    session.headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.115 Safari/537.36'}
+
+    response = session.get(url)
+
+    time.sleep(1)
+
+    data = {
+    	'ctl00$ContentPlaceHolder1$PositionDropDownList': "3"
+    }
+
+    response = session.post(url, data = data)
+
+    soup = BeautifulSoup(response.content, features = "lxml")
+
+    whole_table = soup.findAll('tr', limit = 2)[1]
+
+    headers = [th.getText() for th in whole_table.findAll('tr', limit = 1)[0].findAll('td')]
+    rows = whole_table.findAll('tr')[1:]
+    dvp_stats = [[td.getText() for td in rows[i].findAll('td')] for i in range(len(rows))]
+    for i in range(len(dvp_stats)):
+        dvp_stats[i][0] = dvp_stats[i][0].replace("vs", "")
+
+    dvp_stats_df = pd.DataFrame(dvp_stats, columns = headers)
+
+    print (dvp_stats_df.head(31))
