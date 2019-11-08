@@ -9,10 +9,12 @@ import request
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
 dvp = dvp_list[0]
 
+
+
 per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
 per_game = per_game_list[0]
 per_game.sort_values(by = "Tm", inplace = True)
-#print (per_game)
+
 
 fan_pts_dict = {'PTS':1, 'TRB':1.2, 'AST':1.5, 'STL':3, 'BLK':3, 'TOV':-1}
 
@@ -28,6 +30,9 @@ def main():
     players = adjust_fppg_by_pace(players)
     players = lock_unlock_players(players, exclude_players = exclude_list_last_name, exclude_time = exclude_list_time)
     build_lineup(players)
+
+
+
 
 
 
@@ -90,8 +95,6 @@ def import_contest_data(**kwargs):
 
     players.loc[players["Injury Status"] == 'INJ', 'FPPG'] = 0
     players.loc[players["Injury Status"] == 'O', 'FPPG'] = 0
-    players.loc[players["First Name"] == "Jakarr", "FPPG"] = 0
-    players.loc[players["Last Name"] == "Lemon Jr.", "FPPG"] = 0 
     
     
     return players
