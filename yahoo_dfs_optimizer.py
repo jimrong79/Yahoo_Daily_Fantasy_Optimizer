@@ -11,9 +11,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.select import Select
-
+import time
 import unidecode
-
+from collections import defaultdict
 
 
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
@@ -25,14 +25,15 @@ def formalize_name(name):
     name = name.replace(".", "").replace(" Jr", "").replace(" III", "")
     name = name.replace("Jakob Poltl", "Jakob Poeltl").replace("Taurean Waller-Prince", "Taurean Prince").replace("Maurice Harkless", "Moe Harkless")
     name = name.replace("Mo Bamba", "Mohamed Bamba").replace("Wesley Iwundu", "Wes Iwundu").replace("JaKarr Sampson", "Jakarr Sampson")
+    name = name.strip()
     return name
 
 
 def getting_dvp_by_pos():
     dvp_dict = {}
     
-    driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
-    #driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
+    #driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
+    driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
     url = "https://basketballmonster.com/DailyEaseRankings.aspx"
     
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
@@ -52,6 +53,7 @@ def getting_dvp_by_pos():
                 pos
             )
         )
+        time.sleep(1)
 
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
@@ -64,6 +66,7 @@ def getting_dvp_by_pos():
         for i in range(len(dvp_stats)):
             dvp_stats[i][0] = dvp_stats[i][0].replace("vs", "")
             dvp_stats[i][0] = dvp_stats[i][0].strip()
+            dvp_stats[i][0] = dvp_stats[i][0].replace("NOR", "NOP")
 
         dvp_stats_df = pd.DataFrame(dvp_stats, columns = headers)
 
@@ -77,6 +80,35 @@ def getting_dvp_by_pos():
 
     driver.quit()
     return dvp_dict
+
+def get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos):
+    last_15_days = pd.read_html("https://www.fantasypros.com/nba/stats/avg-overall.php?days=15")
+    last_15_days = last_15_days[0]
+
+    last_15_days['Tm'] = ''
+    last_15_days['Pos'] = ''
+    
+    for i, player in last_15_days.iterrows():
+        last_15_days.at[i, "Player"] = player.Player[:player.Player.index('(')]        
+
+    last_15_days['Player'] = last_15_days["Player"].apply(lambda x: formalize_name(x))
+    last_15_days['Tm'] = last_15_days["Player"].map(player_team)
+    last_15_days['Pos'] = last_15_days["Player"].map(player_pos)
+    last_15_days["Salary"] = last_15_days["Player"].map(salaries)
+    last_15_days['Injured'] = last_15_days["Player"].map(inactive_players)
+    last_15_days['Opponent'] = last_15_days['Tm'].map(team_opp)
+    
+    last_15_days = last_15_days[last_15_days.Injured.isnull()]
+    last_15_days = last_15_days[last_15_days.Opponent.notnull()]
+    last_15_days = last_15_days[pd.to_numeric(last_15_days['Salary'], errors = "coerce").notnull()]
+    last_15_days = last_15_days.drop(columns = ['Injured'],  axis = 1)
+    
+    last_15_days = last_15_days.rename(columns = {"REB": "TRB", "TO": "TOV"})
+
+    
+    last_15_days.to_csv("last_15_days.csv")
+    return last_15_days
+    
 
 
 def get_per_game_stats(team_opp, inactive_players, salaries):
@@ -96,14 +128,10 @@ def get_per_game_stats(team_opp, inactive_players, salaries):
     # Dropping players not playing today
     per_game = per_game[per_game.Injured.isnull()]
     per_game = per_game[per_game.Opponent.notnull()]
-
     per_game.to_csv("per_game_no_drop_salary.csv")
-
     per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
-    
     per_game = per_game.drop(columns = ['Injured'],  axis = 1)
-
-    per_game.to_csv('per_game_stats.csv')
+    #per_game.to_csv('per_game_stats.csv')
 
     return per_game
 
@@ -153,21 +181,27 @@ def main():
     team_opp = {}
     inactive_players = {}
     salaries = {}
+    player_team = {}
+    player_pos = {}
 
     exclude_list_last_name =  []
     exclude_list_time = []
     late_game = False
     if late_game:
         exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
-    yahoo_contest = import_contest_data(team_opp, inactive_players, salaries)
+    yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
     players = get_per_game_stats(team_opp, inactive_players, salaries)
+    players_last_15 = get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos)
     dvp_dict = getting_dvp_by_pos()
     players = calculate_fantasy_points(players, dvp_dict)
+    players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
+    build_lineup(players)
+    build_lineup(players_last_15)
+
 
     #players = adjust_fppg_by_pace(players)
     #players = lock_unlock_players(players, exclude_players = exclude_list_last_name, exclude_time = exclude_list_time)
-    build_lineup(players)
-
+    
 
 
 
@@ -203,7 +237,7 @@ def adjust_fppg_by_pace(players_df):
     team_stats["PACE"] = team_stats["PACE"].astype(float)
     team_stats.set_index("TEAM", inplace = True)
 
-    team_stats.to_csv("team_stats.csv")
+    #team_stats.to_csv("team_stats.csv")
     total_teams = team_stats.shape[0]
     pace_avg = round(team_stats["PACE"].mean(), 2)
     for i, row in players_df.iterrows():
@@ -214,7 +248,7 @@ def adjust_fppg_by_pace(players_df):
 
 
 
-def import_contest_data(team_opp, inactive_players, salaries):
+def import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos):
     players = pd.read_csv("Yahoo_DF_player_export.csv")
 
     # convert team names from yahoo format to match with bball reference
@@ -232,6 +266,9 @@ def import_contest_data(team_opp, inactive_players, salaries):
         if player.get("Team") not in team_opp:
             team_opp[player.get("Team")] = player.get("Opponent")
         salaries[player_name] = int(player.get("Salary"))
+        player_team[player_name] = player.get("Team")
+        player_pos[player_name] = player.get("Position")
+
 
     return players
 
@@ -337,7 +374,7 @@ def build_lineup(players):
 
     players["is_drafted"] = 0.0
     is_drafted_idx = players.columns.get_loc("is_drafted")
-    players.to_csv('result.csv')
+    #players.to_csv('result.csv')
 
     for var in model.variables():
         # Set is drafted to the value determined by the LP
