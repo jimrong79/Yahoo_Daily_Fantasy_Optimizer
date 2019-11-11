@@ -12,9 +12,14 @@ Python 3.7
 Packages installed:
 
 pulp
+
 pandas
+
 bs4
+
 selenium
+
+unidecode
 
 ## How to use
 
