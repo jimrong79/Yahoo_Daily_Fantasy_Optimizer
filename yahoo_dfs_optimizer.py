@@ -21,6 +21,17 @@ dvp = dvp_list[0]
 
 
 def formalize_name(name):
+    """
+        Gets and returns player name according to Yahoo Fantasy format
+        
+        Parameters:
+            name: str
+                Player's name
+        
+        Returns:
+            str: Player's name after uniform formatting
+    """
+
     name = unidecode.unidecode(name)
     name = name.replace(".", "").replace(" Jr", "").replace(" III", "")
     name = name.replace("Jakob Poltl", "Jakob Poeltl").replace("Taurean Waller-Prince", "Taurean Prince").replace("Maurice Harkless", "Moe Harkless")
@@ -30,6 +41,17 @@ def formalize_name(name):
 
 
 def getting_dvp_by_pos():
+    """
+        Returns a dictionary contains defense versus position dataframe of each NBA team
+        
+        Parameters:
+            None
+        
+        Return:
+            dict: a dictionary with dvp dataframe for 5 different position (PG, SG, SF, PF, C)
+    
+    """
+    
     dvp_dict = {}
     
     #driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
@@ -43,7 +65,7 @@ def getting_dvp_by_pos():
     for option, pos in option_dict.items():
         
         
-        element = WebDriverWait(driver, 20).until(
+        element = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//select[@name='ctl00$ContentPlaceHolder1$PositionDropDownList']/option[@value='" + option + "']"))
         )
         element.click()
@@ -82,6 +104,31 @@ def getting_dvp_by_pos():
     return dvp_dict
 
 def get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos):
+    
+    """
+        Gets last 15 days per game stats and adjusts the dataframe based on Yahoo contest data
+        
+        Parameters:
+            team_opp: dict
+                information of which 2 teams play agaisnt each other
+            
+            inactive_players: dict
+                information of which players are not playing tonight
+            
+            salaries: dict
+                players' yahoo daily fantasy contest salary
+                
+            player_team: dict
+                information of player's current team
+            
+            player_pos: dict
+                information of player's position based on yahoo contest
+        
+        Return:
+            DataFrame: Last 15 days per game stats dataframe        
+       
+    """
+
     last_15_days = pd.read_html("https://www.fantasypros.com/nba/stats/avg-overall.php?days=15")
     last_15_days = last_15_days[0]
 
@@ -111,8 +158,26 @@ def get_last_15_per_game(team_opp, inactive_players, salaries, player_team, play
     
 
 
-def get_per_game_stats(team_opp, inactive_players, salaries):
-
+def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
+    """
+        Gets season per game stats and adjusts the dataframe based on Yahoo contest data
+        
+        Parameters:
+            team_opp: dict
+                information of which 2 teams play agaisnt each other
+            
+            inactive_players: dict
+                information of which players are not playing tonight
+            
+            salaries: dict
+                players' yahoo daily fantasy contest salary
+                        
+        Return:
+            DataFrame: Season per game stats dataframe        
+       
+    """
+    
+    
     per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
     per_game = per_game_list[0]
     #per_game.sort_values(by = "Tm", inplace = True)
@@ -123,6 +188,7 @@ def get_per_game_stats(team_opp, inactive_players, salaries):
     per_game['Opponent'] = per_game['Tm'].map(team_opp)
     per_game['Injured'] = per_game['Player'].map(inactive_players)
     per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
+    per_game["Pos"] = per_game["Player"].map(player_pos)
     per_game["Salary"] = per_game["Player"].replace(salaries)
 
     # Dropping players not playing today
@@ -137,6 +203,22 @@ def get_per_game_stats(team_opp, inactive_players, salaries):
 
 
 def calculate_fantasy_points(players, dvp_dict):
+    """
+        Adjust players stats based on defens vs postion with the team they play against. 
+        After that calculate fantasy points based on yahoo scoring rule
+        
+        Parameters:
+            playeres: dataframe
+                dataframe with containing stats of all players who are playing tonight
+            
+            dvp_dict: dict
+                defense versus position information
+                
+        Returns:
+            DataFrame: players stats after adjustment
+    
+    """
+    
 
     fan_pts_dict = {'PTS':1.0, 'TRB':1.2, 'AST':1.5, 'STL':3.0, 'BLK':3.0, 'TOV':-1.0}
 
@@ -176,47 +258,19 @@ def calculate_fantasy_points(players, dvp_dict):
     return players
 
 
-def main():
-    
-    team_opp = {}
-    inactive_players = {}
-    salaries = {}
-    player_team = {}
-    player_pos = {}
-
-    exclude_list_last_name =  []
-    exclude_list_time = []
-    late_game = False
-    if late_game:
-        exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
-    yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
-    players = get_per_game_stats(team_opp, inactive_players, salaries)
-    players_last_15 = get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos)
-    dvp_dict = getting_dvp_by_pos()
-    players = calculate_fantasy_points(players, dvp_dict)
-    players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
-    build_lineup(players)
-    build_lineup(players_last_15)
-
-
-    #players = adjust_fppg_by_pace(players)
-    #players = lock_unlock_players(players, exclude_players = exclude_list_last_name, exclude_time = exclude_list_time)
-    
-
-
-
-
-
 def adjust_fppg_by_pace(players_df):
     """
+        Not in use. Replaced by dvp stats
+        
         Adjust fantasy points per game based on pace from both teams. Current method may be inaccurate. Will do some research and apply the best way
         
         
         Parameters:
-            players_df: dataframe imported from yahoo daily fantasy page
+            players_df: dataframe 
+                imported from yahoo daily fantasy page
         
         Returns: 
-            adjusted dataframe based on pace
+            DataFrame: adjusted dataframe based on pace
             
     """
 
@@ -249,6 +303,10 @@ def adjust_fppg_by_pace(players_df):
 
 
 def import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos):
+    """
+    
+    
+    """
     players = pd.read_csv("Yahoo_DF_player_export.csv")
 
     # convert team names from yahoo format to match with bball reference
@@ -287,7 +345,7 @@ def lock_unlock_players(players_df, **kwargs):
         
     return players_df
 
-def build_lineup(players):
+def build_lineup(players, lineup_name = None):
 
     players = players.reindex()
     
@@ -384,12 +442,42 @@ def build_lineup(players):
 
     my_team = players[players["is_drafted"] == 1.0]
     my_team = my_team[["Player", "Pos","Tm","Salary","FP"]]
-
+    
+    print ("Line up build by {} stats".format(lineup_name))
     print (my_team)
     print ("Total used amount of salary cap: {}".format(my_team["Salary"].sum()))
     print ("Projected points for tonight: {}".format(my_team["FP"].sum().round(1)))
 
-        
+      
+      
+def main():
+    
+    team_opp = {}
+    inactive_players = {}
+    salaries = {}
+    player_team = {}
+    player_pos = {}
+
+    exclude_list_last_name =  []
+    exclude_list_time = []
+    late_game = False
+    if late_game:
+        exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
+    yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
+    players = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
+    players_last_15 = get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos)
+    dvp_dict = getting_dvp_by_pos()
+    players = calculate_fantasy_points(players, dvp_dict)
+    players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
+    build_lineup(players, "Per Game")
+    build_lineup(players_last_15, "Last 15 Days")
+
+
+    #players = adjust_fppg_by_pace(players)
+    #players = lock_unlock_players(players, exclude_players = exclude_list_last_name, exclude_time = exclude_list_time)
+    
+
+
 
 
 
