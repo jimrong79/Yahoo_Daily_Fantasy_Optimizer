@@ -16,6 +16,9 @@ import unidecode
 from collections import defaultdict
 
 
+#driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
+driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
+
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
 dvp = dvp_list[0]
 
@@ -54,8 +57,6 @@ def getting_dvp_by_pos():
     
     dvp_dict = {}
     
-    #driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
-    driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
     url = "https://basketballmonster.com/DailyEaseRankings.aspx"
     
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
@@ -103,7 +104,7 @@ def getting_dvp_by_pos():
     driver.quit()
     return dvp_dict
 
-def get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos):
+def get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, days):
     
     """
         Gets last 15 days per game stats and adjusts the dataframe based on Yahoo contest data
@@ -128,33 +129,33 @@ def get_last_15_per_game(team_opp, inactive_players, salaries, player_team, play
             DataFrame: Last 15 days per game stats dataframe        
        
     """
-
-    last_15_days = pd.read_html("https://www.fantasypros.com/nba/stats/avg-overall.php?days=15")
-    last_15_days = last_15_days[0]
-
-    last_15_days['Tm'] = ''
-    last_15_days['Pos'] = ''
     
-    for i, player in last_15_days.iterrows():
-        last_15_days.at[i, "Player"] = player.Player[:player.Player.index('(')]        
+    last_x_days = pd.read_html("https://www.fantasypros.com/nba/stats/avg-overall.php?days={}".format(days))
+    last_x_days = last_x_days[0]
 
-    last_15_days['Player'] = last_15_days["Player"].apply(lambda x: formalize_name(x))
-    last_15_days['Tm'] = last_15_days["Player"].map(player_team)
-    last_15_days['Pos'] = last_15_days["Player"].map(player_pos)
-    last_15_days["Salary"] = last_15_days["Player"].map(salaries)
-    last_15_days['Injured'] = last_15_days["Player"].map(inactive_players)
-    last_15_days['Opponent'] = last_15_days['Tm'].map(team_opp)
+    last_x_days['Tm'] = ''
+    last_x_days['Pos'] = ''
     
-    last_15_days = last_15_days[last_15_days.Injured.isnull()]
-    last_15_days = last_15_days[last_15_days.Opponent.notnull()]
-    last_15_days = last_15_days[pd.to_numeric(last_15_days['Salary'], errors = "coerce").notnull()]
-    last_15_days = last_15_days.drop(columns = ['Injured'],  axis = 1)
+    for i, player in last_x_days.iterrows():
+        last_x_days.at[i, "Player"] = player.Player[:player.Player.index('(')]        
+
+    last_x_days['Player'] = last_x_days["Player"].apply(lambda x: formalize_name(x))
+    last_x_days['Tm'] = last_x_days["Player"].map(player_team)
+    last_x_days['Pos'] = last_x_days["Player"].map(player_pos)
+    last_x_days["Salary"] = last_x_days["Player"].map(salaries)
+    last_x_days['Injured'] = last_x_days["Player"].map(inactive_players)
+    last_x_days['Opponent'] = last_x_days['Tm'].map(team_opp)
     
-    last_15_days = last_15_days.rename(columns = {"REB": "TRB", "TO": "TOV"})
+    last_x_days = last_x_days[last_x_days.Injured.isnull()]
+    last_x_days = last_x_days[last_x_days.Opponent.notnull()]
+    last_x_days = last_x_days[pd.to_numeric(last_x_days['Salary'], errors = "coerce").notnull()]
+    last_x_days = last_x_days.drop(columns = ['Injured'],  axis = 1)
+    
+    last_x_days = last_x_days.rename(columns = {"REB": "TRB", "TO": "TOV"})
 
     
-    last_15_days.to_csv("last_15_days.csv")
-    return last_15_days
+    last_x_days.to_csv("last_{}_days.csv".format(days))
+    return last_x_days
     
 
 
@@ -463,14 +464,22 @@ def main():
     late_game = False
     if late_game:
         exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
+    
     yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
-    players = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
-    players_last_15 = get_last_15_per_game(team_opp, inactive_players, salaries, player_team, player_pos)
+    
     dvp_dict = getting_dvp_by_pos()
-    players = calculate_fantasy_points(players, dvp_dict)
+    
+    players_season = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
+    players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
+    players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
+    
+    players_season = calculate_fantasy_points(players_season, dvp_dict)
     players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
-    build_lineup(players, "Per Game")
+    players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
+    
+    build_lineup(players_season, "Per Game")
     build_lineup(players_last_15, "Last 15 Days")
+    build_lineup(players_last_7, "Last 7 Days")
 
 
     #players = adjust_fppg_by_pace(players)
