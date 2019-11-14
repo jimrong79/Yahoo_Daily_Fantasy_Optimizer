@@ -7,3 +7,4 @@ per_game_stats.csv
 result.csv
 *.csv
 Yahoo_DF_player_export.csv
+*.mps
