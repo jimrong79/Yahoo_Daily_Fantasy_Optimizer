@@ -22,6 +22,20 @@ driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
 dvp = dvp_list[0]
 
+def lock_unlock_players(players_df, **kwargs):
+
+    
+    for key, value in kwargs.items():
+        if key == "exclude_players":
+            for excluded_last_name in value:
+                players_df.loc[players_df["Last Name"] == excluded_last_name, "FPPG"] = 0
+        
+        if key == "exclude_time":
+            for exclude_time in value:
+                players_df.loc[players["Time"] == exclude_time, 'FPPG'] = 0
+        
+    return players_df
+
 
 def formalize_name(name):
     """
@@ -210,7 +224,7 @@ def calculate_fantasy_points(players, dvp_dict):
         
         Parameters:
             playeres: dataframe
-                dataframe with containing stats of all players who are playing tonight
+                dataframe which conatins stats of all players who are playing tonight
             
             dvp_dict: dict
                 defense versus position information
@@ -305,7 +319,24 @@ def adjust_fppg_by_pace(players_df):
 
 def import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos):
     """
-    
+        Import yahoo daily fantasy contest data and acquire information for building lineup
+
+        Paramenters:
+            team_opp: dict
+                dictionary to contain information of which 2 teams play agaisnt each other 
+            inactive_playeres: dict
+                dictionary to contain information of players not playing tonight
+            salaries: dict
+                dictionary to contain information of players' dfs contest salary
+            player_team: dict
+                dictionary to contain information of players' current team
+            player_pos: dict
+                dictionary to contain information of players' position based on yahoo contest
+
+        Returns: DataFrame
+            yahoo contest dataframe
+
+
     
     """
     players = pd.read_csv("Yahoo_DF_player_export.csv")
@@ -332,21 +363,20 @@ def import_contest_data(team_opp, inactive_players, salaries, player_team, playe
     return players
 
 
-def lock_unlock_players(players_df, **kwargs):
 
-    
-    for key, value in kwargs.items():
-        if key == "exclude_players":
-            for excluded_last_name in value:
-                players_df.loc[players_df["Last Name"] == excluded_last_name, "FPPG"] = 0
-        
-        if key == "exclude_time":
-            for exclude_time in value:
-                players_df.loc[players["Time"] == exclude_time, 'FPPG'] = 0
-        
-    return players_df
 
 def build_lineup(players, lineup_name = None):
+    """
+        Build optimal lineup based on players salary and projected fantasy point
+
+        Paramenters:
+            players: DataFrame
+                players salary and fantasy point information
+
+        Returns:
+            None
+
+    """
 
     players = players.reindex()
     
