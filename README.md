@@ -36,8 +36,8 @@ Then run yahoo_dfs_optimizer.py will generate a optimized lineup based on matchu
 
 ## Future work
 
-1. Getting data from NBA.com. 
-2. Handling high usg players sitting out
+1. Getting more data from NBA.com. 
+2. Handling high usg players sitting out / Injured
 3. Explore possibility of ML
 4. Start building up lineup records in Yahoo 1 dollar GPP and 50/50 contests
 5. Adding factors of # of days rest 
