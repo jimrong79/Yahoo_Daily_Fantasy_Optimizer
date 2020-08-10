@@ -32,10 +32,6 @@ Click on any yahoo daily fantasy contest. Select export players list. Download "
 
 https://sports.yahoo.com/dailyfantasy/nba
 
-Open yahoo_dfs_optimizer.py and change the driver location to where you install the chromedriver
-
-driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
-
 Then run yahoo_dfs_optimizer.py will generate a optimized lineup based on matchups and yahoo salary.
 
 ## Future work
