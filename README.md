@@ -433,6 +433,8 @@ Finally, the powerful linear programming model can help me build the optimal lin
 
 After running the model for some time, I noticed most of the time it's going to take down a win in 50/50 contest (beat half of the player you win), but for big GPP contest it still need some work to do. 
 
+I was lucky enough to win one big contest by my optimizer. The result was so exciting, not because I win, but seeing what I create and utilize some engineering tool to accomplish something.
+
 ![](/images/winning.jpg)
 
 ## Future work
