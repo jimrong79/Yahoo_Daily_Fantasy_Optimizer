@@ -36,6 +36,20 @@ Then run yahoo_dfs_optimizer.py will generate a optimized lineup based on matchu
 
 ## Introduction
 
+Following are the steps I took to build up the tool:
+
+* READ IN CONTEST DATA
+* GET DEFENSE VERSUS POSITION DATA
+* GET PLAYER STATS
+* CALCULATE FANTASY POINTS
+* INITIALIZE PULP MODEL
+* SETUP LPVARIABLES FOR PLAYERS
+* INPUT OBJECTIVE FUNCTIONS AND COST CONSTRAINT
+* INPUT PLAYER POSITION CONSTRAINT
+* SOLVE THE PROBLEM AND DISPLAY OUTPUT
+
+
+
 This optimizer will utilize BeautifulSoup and Selenium driver to scrape player's data online and then use the PuLP python package for Linear Programming to find the 
 best lineup in <b>Yahoo Fantasy Sport's Daily Fantasy Contest</b>.
 
@@ -285,6 +299,141 @@ def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
 
 ```
 
+#### INITIALIZE PULP MODEL
+
+Now there goes the most important and interesting part of the optimizer, PulP linear programming module. 
+
+I first generated a LpProblem and named the problem as Yahoo and we want to maximizing the resul (Fantasy Points).
+
+
+``` Python
+
+    model = pulp.LpProblem("Yahoo", pulp.LpMaximize)
+    
+    total_points = {}
+    cost = {}
+    PGs = {}
+    SGs = {}
+    SFs = {}
+    PFs = {}
+    Gs = {}
+    Fs = {}
+    Cs = {}
+    number_of_players = {}
+```
+
+#### SETUP LPVARIABLES FOR PLAYERS
+
+Next I iterated through the dataframe to generate LpVariable for all the players. Each player will take on binary values, if eventually this player is selected it will be 1 and 0 if not seleceted
+
+It also defined the FP, cost, and position dictionaries for this player. All dictionary has the same key for each player.
+
+``` Python
+
+    # i = row index, player = player attributes
+    for i, player in players.iterrows():
+
+        var_name = 'x' + str(i) # Create variable name
+        decision_var = pulp.LpVariable(var_name, cat='Binary') # Initialize Variables
+
+        total_points[decision_var] = player["FP"] # Create PPG Dictionary
+        cost[decision_var] = player["Salary"] # Create Cost Dictionary
+        
+        # Create Dictionary for Player Types
+        PGs[decision_var] = player["PG"]
+        SGs[decision_var] = player["SG"]
+        SFs[decision_var] = player["SF"]
+        PFs[decision_var] = player["PF"]
+        Cs[decision_var] = player["C"]
+        Gs[decision_var] = player["PG"] or player["SG"]
+        Fs[decision_var] = player["SF"] or player["PF"]
+        number_of_players[decision_var] = 1.0
+
+
+```
+
+#### INPUT OBJECTIVE FUNCTIONS AND COST CONSTRAINT
+
+Next I created the objective_function for my Pulp model, which is finding the maximum points available, then added the constraints of cost to be limited to 200
+
+``` Python
+
+    objective_function = pulp.LpAffineExpression(total_points)
+    model += objective_function
+
+    #Define cost constraint and add it to the model
+    total_cost = pulp.LpAffineExpression(cost)
+    model += (total_cost <= 200)
+
+
+```
+
+#### INPUT PLAYER POSITION CONSTRAINT
+
+Then we need to make sure the model doesn't overdraft players from the same position. The daily fantasy contest required 1 PG, 1 SG, 1G, 1SF, 1PF, 1F, 1C, 1UTIL, so drafting more than 2 centers is not what I'm looking for.
+
+``` Python
+
+    # Add player type constraints
+    PG_constraint = pulp.LpAffineExpression(PGs)
+    SG_constraint = pulp.LpAffineExpression(SGs)
+    SF_constraint = pulp.LpAffineExpression(SFs)
+    PF_constraint = pulp.LpAffineExpression(PFs)
+    C_constraint = pulp.LpAffineExpression(Cs)
+    G_constraint = pulp.LpAffineExpression(Gs)
+    F_constraint = pulp.LpAffineExpression(Fs)
+    total_players = pulp.LpAffineExpression(number_of_players)
+
+    model += (PG_constraint <= 3)
+    model += (PG_constraint >= 1)
+    model += (SG_constraint <= 3)
+    model += (SG_constraint >= 1)
+    model += (SF_constraint <= 3)
+    model += (SF_constraint >= 1)
+    model += (PF_constraint <= 3)
+    model += (PF_constraint >= 1)
+    model += (C_constraint <= 2)
+    model += (C_constraint >= 1)
+    model += (G_constraint >= 3)
+    model += (F_constraint >= 3)
+    model += (total_players <= 8)
+
+```
+
+#### SOLVE THE PROBLEM AND DISPLAY OUTPUT
+
+Finally, the powerful linear programming model can help me build the optimal lineup by my projections. And print out the players I need to choose for the contest.
+
+
+``` Python
+
+    model.status
+    model.solve()
+
+    players["is_drafted"] = 0.0
+    #players.to_csv('result.csv')
+
+    for var in model.variables():
+        # Set is drafted to the value determined by the LP
+        # print ('{}, {}'.format(var.name[1:], var.varValue))
+
+        players.loc[int(var.name[1:]), "is_drafted"] = var.varValue # column 20 = is_drafted
+
+    my_team = players[players["is_drafted"] == 1.0]
+    my_team = my_team[["Player", "Pos","Tm","Salary","FP"]]
+    
+    print ("Line up build by {} stats".format(lineup_name))
+    print (my_team)
+    print ("Total used amount of salary cap: {}".format(my_team["Salary"].sum()))
+    print ("Projected points for tonight: {}".format(my_team["FP"].sum().round(1)))
+
+```
+
+## OUTCOME
+
+After running the model for some time, I noticed most of the time it's going to take down a win in 50/50 contest (beat half of the player you win), but for big GPP contest it still need some work to do. 
+
+![](/images/winning.jpg)
 
 ## Future work
 
