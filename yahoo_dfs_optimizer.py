@@ -4,7 +4,6 @@ import pandas as pd
 import statistics 
 import sys
 from collections import defaultdict
-
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -16,45 +15,52 @@ import unidecode
 from collections import defaultdict
 
 
-#driver = webdriver.Chrome(r"C:\Users\jimro\AppData\Local\Programs\Python\Python37-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
-driver = webdriver.Chrome(r"C:\Users\710453\AppData\Local\Programs\Python\Python36-32\Lib\site-packages\selenium\webdriver\chromedriver_win32\chromedriver.exe")
+from webdriver_manager.chrome import ChromeDriverManager
+driver = webdriver.Chrome(ChromeDriverManager().install())
 
 dvp_list = pd.read_html('https://basketballmonster.com/dfsdvp.aspx')
 dvp = dvp_list[0]
 
-def lock_unlock_players(players_df, **kwargs):
+def import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos):
+    """
+        Import yahoo daily fantasy contest data and acquire information for building lineup
 
+        Paramenters:
+            team_opp: dict
+                dictionary to contain information of which 2 teams play agaisnt each other 
+            inactive_players: dict
+                dictionary to contain information of players not playing tonight
+            salaries: dict
+                dictionary to contain information of players' dfs contest salary
+            player_team: dict
+                dictionary to contain information of players' current team
+            player_pos: dict
+                dictionary to contain information of players' position based on yahoo contest
+
+        Returns: DataFrame
+            yahoo contest dataframe
     
-    for key, value in kwargs.items():
-        if key == "exclude_players":
-            for excluded_last_name in value:
-                players_df.loc[players_df["Last Name"] == excluded_last_name, "FPPG"] = 0
-        
-        if key == "exclude_time":
-            for exclude_time in value:
-                players_df.loc[players["Time"] == exclude_time, 'FPPG'] = 0
-        
-    return players_df
-
-
-def formalize_name(name):
     """
-        Gets and returns player name according to Yahoo Fantasy format
-        
-        Parameters:
-            name: str
-                Player's name
-        
-        Returns:
-            str: Player's name after uniform formatting
-    """
+    players = pd.read_csv("Yahoo_DF_player_export.csv")
 
-    name = unidecode.unidecode(name)
-    name = name.replace(".", "").replace(" Jr", "").replace(" III", "")
-    name = name.replace("Jakob Poltl", "Jakob Poeltl").replace("Taurean Waller-Prince", "Taurean Prince").replace("Maurice Harkless", "Moe Harkless")
-    name = name.replace("Mo Bamba", "Mohamed Bamba").replace("Wesley Iwundu", "Wes Iwundu").replace("JaKarr Sampson", "Jakarr Sampson")
-    name = name.strip()
-    return name
+    # convert team names from yahoo format to match with bball reference
+    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS"}   
+    players = players.replace({"Team": team_name_transfer_dict_yahoo})
+    players = players.replace({"Opponent": team_name_transfer_dict_yahoo})
+
+    for i, player in players.iterrows():
+        player_name = player.get("First Name") + ' ' + player.get("Last Name")
+        player_name = formalize_name(player_name)
+        if player.get("Injury Status") == "INJ" or player.get("Injury Status") == "O":
+            inactive_players[player_name] = 1
+        if player.get("Team") not in team_opp:
+            team_opp[player.get("Team")] = player.get("Opponent")
+        salaries[player_name] = int(player.get("Salary"))
+        player_team[player_name] = player.get("Team")
+        player_pos[player_name] = player.get("Position")
+
+
+    return players
 
 
 def getting_dvp_by_pos():
@@ -66,19 +72,15 @@ def getting_dvp_by_pos():
         
         Return:
             dict: a dictionary with dvp dataframe for 5 different position (PG, SG, SF, PF, C)
-    
     """
     
     dvp_dict = {}
-    
     url = "https://basketballmonster.com/DailyEaseRankings.aspx"
-    
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
-    
     driver.get(url)
+
     
     for option, pos in option_dict.items():
-        
         
         element = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//select[@name='ctl00$ContentPlaceHolder1$PositionDropDownList']/option[@value='" + option + "']"))
@@ -90,11 +92,10 @@ def getting_dvp_by_pos():
                 pos
             )
         )
-        time.sleep(1)
+        time.sleep(0.1)
 
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
-
         whole_table = soup.findAll('tr', limit = 2)[1]
         headers = [th.getText() for th in whole_table.findAll('tr', limit = 1)[0].findAll('td')]
         rows = whole_table.findAll('tr')[1:]
@@ -106,17 +107,62 @@ def getting_dvp_by_pos():
             dvp_stats[i][0] = dvp_stats[i][0].replace("NOR", "NOP")
 
         dvp_stats_df = pd.DataFrame(dvp_stats, columns = headers)
-
         dvp_stats_df = dvp_stats_df.drop(columns = ['Value', 'pV', 'rV', 'aV', 'sV', 'bV', 'toV'],  axis = 1)
-
         dvp_stats_df.set_index("vs Team", inplace = True)
-
-        #print (dvp_stats_df.head(31))
-
         dvp_dict[pos] = dvp_stats_df
 
     driver.quit()
     return dvp_dict
+
+def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
+    """
+        Gets season per game stats and adjusts the dataframe based on Yahoo contest data
+        
+        Parameters:
+            team_opp: dict
+                information of which 2 teams play agaisnt each other
+            
+            inactive_players: dict
+                information of which players are not playing tonight
+            
+            salaries: dict
+                players' yahoo daily fantasy contest salary
+                        
+        Return:
+            DataFrame: Season per game stats dataframe        
+       
+    """
+    
+    
+    # per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
+    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/NBA_2020_per_game.html")
+    per_game = per_game_list[0]
+    #per_game.sort_values(by = "Tm", inplace = True)
+
+    #dealing name difference between bball reference and fantasypros
+    per_game = per_game.replace({"Tm":"BRK"}, {"Tm":"BKN"})
+
+    per_game["Salary"] = 0.0
+    
+    # Adding opponent column
+    per_game['Opponent'] = per_game['Tm'].map(team_opp)
+    per_game['Injured'] = per_game['Player'].map(inactive_players)
+    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
+    per_game["Pos"] = per_game["Player"].map(player_pos)
+    per_game["Salary"] = per_game["Player"].replace(salaries)
+
+    # Dropping players not playing today
+    per_game = per_game[per_game.Injured.isnull()]
+    per_game = per_game[per_game.Opponent.notnull()]
+
+    per_game.to_csv("per_game_no_drop_salary.csv")
+    per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
+    per_game = per_game.drop(columns = ['Injured'],  axis = 1)
+    #per_game.to_csv('per_game_stats.csv')
+
+    return per_game
+
+
 
 def get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, days):
     
@@ -150,8 +196,10 @@ def get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, 
     last_x_days['Tm'] = ''
     last_x_days['Pos'] = ''
     
+    # Damian Lillard (POR - PG)  get rid of (POR - PG) part
     for i, player in last_x_days.iterrows():
-        last_x_days.at[i, "Player"] = player.Player[:player.Player.index('(')]        
+        if "(" in last_x_days.at[i, "Player"]:
+            last_x_days.at[i, "Player"] = player.Player[:player.Player.index('(')]    
 
     last_x_days['Player'] = last_x_days["Player"].apply(lambda x: formalize_name(x))
     last_x_days['Tm'] = last_x_days["Player"].map(player_team)
@@ -160,64 +208,43 @@ def get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, 
     last_x_days['Injured'] = last_x_days["Player"].map(inactive_players)
     last_x_days['Opponent'] = last_x_days['Tm'].map(team_opp)
     
+    # Take out inactive players and players who are not playing today
     last_x_days = last_x_days[last_x_days.Injured.isnull()]
     last_x_days = last_x_days[last_x_days.Opponent.notnull()]
+
+
     last_x_days = last_x_days[pd.to_numeric(last_x_days['Salary'], errors = "coerce").notnull()]
     last_x_days = last_x_days.drop(columns = ['Injured'],  axis = 1)
-    
     last_x_days = last_x_days.rename(columns = {"REB": "TRB", "TO": "TOV"})
 
     
     last_x_days.to_csv("last_{}_days.csv".format(days))
     return last_x_days
-    
+   
 
 
-def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
+def formalize_name(name):
     """
-        Gets season per game stats and adjusts the dataframe based on Yahoo contest data
+        Gets and returns player name according to Yahoo Fantasy format
         
         Parameters:
-            team_opp: dict
-                information of which 2 teams play agaisnt each other
-            
-            inactive_players: dict
-                information of which players are not playing tonight
-            
-            salaries: dict
-                players' yahoo daily fantasy contest salary
-                        
-        Return:
-            DataFrame: Season per game stats dataframe        
-       
+            name: str
+                Player's name
+        
+        Returns:
+            str: Player's name after uniform formatting
     """
-    
-    
-    per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
-    per_game = per_game_list[0]
-    #per_game.sort_values(by = "Tm", inplace = True)
 
-    per_game["Salary"] = 0.0
-    
-    # Adding opponent column
-    per_game['Opponent'] = per_game['Tm'].map(team_opp)
-    per_game['Injured'] = per_game['Player'].map(inactive_players)
-    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
-    per_game["Pos"] = per_game["Player"].map(player_pos)
-    per_game["Salary"] = per_game["Player"].replace(salaries)
-
-    # Dropping players not playing today
-    per_game = per_game[per_game.Injured.isnull()]
-    per_game = per_game[per_game.Opponent.notnull()]
-    per_game.to_csv("per_game_no_drop_salary.csv")
-    per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
-    per_game = per_game.drop(columns = ['Injured'],  axis = 1)
-    #per_game.to_csv('per_game_stats.csv')
-
-    return per_game
+    name = unidecode.unidecode(name)
+    name = name.replace(".", "").replace(" Jr", "").replace(" III", "")
+    name = name.replace("Jakob Poltl", "Jakob Poeltl").replace("Taurean Waller-Prince", "Taurean Prince").replace("Maurice Harkless", "Moe Harkless")
+    name = name.replace("Mo Bamba", "Mohamed Bamba").replace("Wesley Iwundu", "Wes Iwundu").replace("JaKarr Sampson", "Jakarr Sampson").replace("Bojan Bogdanović", "Bojan Bogdanovic")
+    name = name.strip()
+    return name
 
 
-def calculate_fantasy_points(players, dvp_dict):
+
+def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
     """
         Adjust players stats based on defens vs postion with the team they play against. 
         After that calculate fantasy points based on yahoo scoring rule
@@ -247,13 +274,20 @@ def calculate_fantasy_points(players, dvp_dict):
             player_pos = 'PG'
 
         opponent = player.get("Opponent")
-
-        pts_mod = float(dvp_dict[player_pos].loc[[opponent], ['p%']].values[0][0].strip('%')) / 100 + 1
-        reb_mod = float(dvp_dict[player_pos].loc[[opponent], ['r%']].values[0][0].strip('%')) / 100 + 1
-        ast_mod = float(dvp_dict[player_pos].loc[[opponent], ['a%']].values[0][0].strip('%')) / 100 + 1
-        stl_mod = float(dvp_dict[player_pos].loc[[opponent], ['s%']].values[0][0].strip('%')) / 100 + 1
-        blk_mod = float(dvp_dict[player_pos].loc[[opponent], ['b%']].values[0][0].strip('%')) / 100 + 1
-        tov_mod = float(dvp_dict[player_pos].loc[[opponent], ['to%']].values[0][0].strip('%')) / 100 + 1
+        if apply_dvp:
+            pts_mod = float(dvp_dict[player_pos].loc[[opponent], ['p%']].values[0][0].strip('%')) / 100 + 1
+            reb_mod = float(dvp_dict[player_pos].loc[[opponent], ['r%']].values[0][0].strip('%')) / 100 + 1
+            ast_mod = float(dvp_dict[player_pos].loc[[opponent], ['a%']].values[0][0].strip('%')) / 100 + 1
+            stl_mod = float(dvp_dict[player_pos].loc[[opponent], ['s%']].values[0][0].strip('%')) / 100 + 1
+            blk_mod = float(dvp_dict[player_pos].loc[[opponent], ['b%']].values[0][0].strip('%')) / 100 + 1
+            tov_mod = float(dvp_dict[player_pos].loc[[opponent], ['to%']].values[0][0].strip('%')) / 100 + 1
+        else:
+            pts_mod = 1
+            reb_mod = 1
+            ast_mod = 1
+            stl_mod = 1
+            blk_mod = 1
+            tov_mod = 1
 
         
         players.at[i, 'PTS'] = round(pts_mod * float(players.at[i, 'PTS']), 1) 
@@ -268,100 +302,17 @@ def calculate_fantasy_points(players, dvp_dict):
                             + players.at[i, 'BLK'] * fan_pts_dict['BLK'] + players.at[i, 'TOV'] * fan_pts_dict['TOV']
 
 
+    # adjustment based on inactive players
+    teams = set(players['Tm'].tolist())
+    for team in teams:
+        team_total = players.loc[players['Tm'] == team, 'FP'].sum()        
+        print ("{} FP total is : {}".format(team, team_total))
+
+
+
     players.to_csv('mod_per_game.csv')
 
     return players
-
-
-def adjust_fppg_by_pace(players_df):
-    """
-        Not in use. Replaced by dvp stats
-        
-        Adjust fantasy points per game based on pace from both teams. Current method may be inaccurate. Will do some research and apply the best way
-        
-        
-        Parameters:
-            players_df: dataframe 
-                imported from yahoo daily fantasy page
-        
-        Returns: 
-            DataFrame: adjusted dataframe based on pace
-            
-    """
-
-    # mapping team names to yahoo format
-    team_name_transfer_dict_espn = {"LA Clippers" : "LAC", "San Antonio": "SAS", "Phoenix": "PHO", "Atlanta":"ATL", "Dallas":"DAL", "Portland":"POR", 
-                                    "Minnesota":"MIN", "New Orleans":"NOP", "Detroit":"DET", "Brooklyn":"BKN", "Toronto":"TOR", "LA Lakers":"LAL", "Miami":"MIA", 
-                                    "Houston":"HOU", "Milwaukee":"MIL", "Charlotte":"CHA", "Boston":"BOS", "Philadelphia":"PHI", "Indiana":"IND", "Denver":"DEN", 
-                                    "Utah":"UTA", "Memphis":"MEM", "Washington":"WAS", "Golden State":"GSW", "Chicago":"CHI", "Cleveland":"CLE", "New York":"NYK", 
-                                    "Oklahoma City":"OKC", "Orlando":"ORL", "Sacramento":"SAC"}
-
-    team_stats_list = pd.read_html("http://www.espn.com/nba/hollinger/teamstats")
-    team_stats = team_stats_list[0]
-    team_stats.columns = team_stats.iloc[1]
-    team_stats = team_stats.drop(team_stats.index[1])
-    team_stats = team_stats.drop(team_stats.index[0])
-
-    team_stats = team_stats.replace({"TEAM": team_name_transfer_dict_espn})
-    team_stats["PACE"] = team_stats["PACE"].astype(float)
-    team_stats.set_index("TEAM", inplace = True)
-
-    #team_stats.to_csv("team_stats.csv")
-    total_teams = team_stats.shape[0]
-    pace_avg = round(team_stats["PACE"].mean(), 2)
-    for i, row in players_df.iterrows():
-        multiplier = (team_stats.at[row.at["Team"], "PACE"]) /  pace_avg * (team_stats.at[row.at["Opponent"], "PACE"]) /  pace_avg
-        players_df.at[i, 'FPPG'] = round(multiplier * players_df.at[i, 'FPPG'], 1)
-    
-    return players_df
-
-
-
-def import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos):
-    """
-        Import yahoo daily fantasy contest data and acquire information for building lineup
-
-        Paramenters:
-            team_opp: dict
-                dictionary to contain information of which 2 teams play agaisnt each other 
-            inactive_playeres: dict
-                dictionary to contain information of players not playing tonight
-            salaries: dict
-                dictionary to contain information of players' dfs contest salary
-            player_team: dict
-                dictionary to contain information of players' current team
-            player_pos: dict
-                dictionary to contain information of players' position based on yahoo contest
-
-        Returns: DataFrame
-            yahoo contest dataframe
-
-
-    
-    """
-    players = pd.read_csv("Yahoo_DF_player_export.csv")
-
-    # convert team names from yahoo format to match with bball reference
-    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS"}   
-    players = players.replace({"Team": team_name_transfer_dict_yahoo})
-    players = players.replace({"Opponent": team_name_transfer_dict_yahoo})
-
-
-
-    for i, player in players.iterrows():
-        player_name = player.get("First Name") + ' ' + player.get("Last Name")
-        player_name = formalize_name(player_name)
-        if player.get("Injury Status") == "INJ" or player.get("Injury Status") == "O":
-            inactive_players[player_name] = 1
-        if player.get("Team") not in team_opp:
-            team_opp[player.get("Team")] = player.get("Opponent")
-        salaries[player_name] = int(player.get("Salary"))
-        player_team[player_name] = player.get("Team")
-        player_pos[player_name] = player.get("Position")
-
-
-    return players
-
 
 
 
@@ -462,7 +413,6 @@ def build_lineup(players, lineup_name = None):
     model.solve()
 
     players["is_drafted"] = 0.0
-    is_drafted_idx = players.columns.get_loc("is_drafted")
     #players.to_csv('result.csv')
 
     for var in model.variables():
@@ -490,34 +440,106 @@ def main():
     player_pos = {}
 
     exclude_list_last_name =  []
+    exclude_players = [""]
     exclude_list_time = []
     late_game = False
     if late_game:
         exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
     
     yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
-    
+    #get_team_avg_stats()
     dvp_dict = getting_dvp_by_pos()
     
+    #exluding players that you don't want to pick
+    for name in exclude_players:
+        inactive_players[name] = 1
+
     players_season = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
     players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
-    players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
+    # players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
     
-    players_season = calculate_fantasy_points(players_season, dvp_dict)
+    players_season = calculate_fantasy_points(players_season, dvp_dict, False)
     players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
-    players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
+    # players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
     
     build_lineup(players_season, "Per Game")
     build_lineup(players_last_15, "Last 15 Days")
-    build_lineup(players_last_7, "Last 7 Days")
+    # build_lineup(players_last_7, "Last 7 Days")
 
 
     #players = adjust_fppg_by_pace(players)
     #players = lock_unlock_players(players, exclude_players = exclude_list_last_name, exclude_time = exclude_list_time)
+
+
+
+# Under development
+def lock_unlock_players(players_df, **kwargs):
+
+    for key, value in kwargs.items():
+        if key == "exclude_players":
+            for excluded_last_name in value:
+                players_df.loc[players_df["Last Name"] == excluded_last_name, "FPPG"] = 0
+        
+        if key == "exclude_time":
+            for exclude_time in value:
+                players_df.loc[players["Time"] == exclude_time, 'FPPG'] = 0
+        
+    return players_df
+
+# Under development
+def get_team_avg_stats():
+    team_avg_list = pd.read_html("https://www.espn.com/nba/stats/team")
+    team_avg = pd.concat([team_avg_list[0], team_avg_list[1]], axis = 1, sort=False)
+
+    team_avg['FP'] = team_avg["PTS"] + team_avg["REB"] * 1.2
+    # team_avg.at[i, 'FP'] = players.at[i, 'PTS'] * fan_pts_dict['PTS'] + players.at[i, 'TRB'] * fan_pts_dict['TRB'] \
+    #                     + players.at[i, 'AST'] * fan_pts_dict['AST'] + players.at[i, 'STL'] * fan_pts_dict['STL'] \
+    #                     + players.at[i, 'BLK'] * fan_pts_dict['BLK'] + players.at[i, 'TOV'] * fan_pts_dict['TOV']
+
+    team_avg.to_csv("team_avg.csv")
+
+# Not in use
+def adjust_fppg_by_pace(players_df):
+    """
+        Not in use. Replaced by dvp stats
+        
+        Adjust fantasy points per game based on pace from both teams. Current method may be inaccurate. Will do some research and apply the best way
+        
+        
+        Parameters:
+            players_df: dataframe 
+                imported from yahoo daily fantasy page
+        
+        Returns: 
+            DataFrame: adjusted dataframe based on pace
+            
+    """
+
+    # mapping team names to yahoo format
+    team_name_transfer_dict_espn = {"LA Clippers" : "LAC", "San Antonio": "SAS", "Phoenix": "PHO", "Atlanta":"ATL", "Dallas":"DAL", "Portland":"POR", 
+                                    "Minnesota":"MIN", "New Orleans":"NOP", "Detroit":"DET", "Brooklyn":"BKN", "Toronto":"TOR", "LA Lakers":"LAL", "Miami":"MIA", 
+                                    "Houston":"HOU", "Milwaukee":"MIL", "Charlotte":"CHA", "Boston":"BOS", "Philadelphia":"PHI", "Indiana":"IND", "Denver":"DEN", 
+                                    "Utah":"UTA", "Memphis":"MEM", "Washington":"WAS", "Golden State":"GSW", "Chicago":"CHI", "Cleveland":"CLE", "New York":"NYK", 
+                                    "Oklahoma City":"OKC", "Orlando":"ORL", "Sacramento":"SAC"}
+
+    team_stats_list = pd.read_html("http://www.espn.com/nba/hollinger/teamstats")
+    team_stats = team_stats_list[0]
+    team_stats.columns = team_stats.iloc[1]
+    team_stats = team_stats.drop(team_stats.index[1])
+    team_stats = team_stats.drop(team_stats.index[0])
+
+    team_stats = team_stats.replace({"TEAM": team_name_transfer_dict_espn})
+    team_stats["PACE"] = team_stats["PACE"].astype(float)
+    team_stats.set_index("TEAM", inplace = True)
+
+    #team_stats.to_csv("team_stats.csv")
+    total_teams = team_stats.shape[0]
+    pace_avg = round(team_stats["PACE"].mean(), 2)
+    for i, row in players_df.iterrows():
+        multiplier = (team_stats.at[row.at["Team"], "PACE"]) /  pace_avg * (team_stats.at[row.at["Opponent"], "PACE"]) /  pace_avg
+        players_df.at[i, 'FPPG'] = round(multiplier * players_df.at[i, 'FPPG'], 1)
     
-
-
-
+    return players_df
 
 
 if __name__ == "__main__":
