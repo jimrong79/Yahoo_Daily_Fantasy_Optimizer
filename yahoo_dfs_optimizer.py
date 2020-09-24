@@ -144,13 +144,15 @@ def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
 
     per_game["Salary"] = 0.0
     
-    # Adding opponent column
+    # Adding opponent column    
+    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
     per_game['Opponent'] = per_game['Tm'].map(team_opp)
     per_game['Injured'] = per_game['Player'].map(inactive_players)
-    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
     per_game["Pos"] = per_game["Player"].map(player_pos)
     per_game["Salary"] = per_game["Player"].replace(salaries)
 
+
+    # per_game.to_csv("per_game_no_drop_salary.csv")
     # Dropping players not playing today
     per_game = per_game[per_game.Injured.isnull()]
     per_game = per_game[per_game.Opponent.notnull()]
@@ -455,15 +457,15 @@ def main():
         inactive_players[name] = 1
 
     players_season = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
-    players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
+    # players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
     # players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
     
-    players_season = calculate_fantasy_points(players_season, dvp_dict, False)
-    players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
+    players_season = calculate_fantasy_points(players_season, dvp_dict, True)
+    # players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
     # players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
     
     build_lineup(players_season, "Per Game")
-    build_lineup(players_last_15, "Last 15 Days")
+    # build_lineup(players_last_15, "Last 15 Days")
     # build_lineup(players_last_7, "Last 7 Days")
 
 
@@ -491,7 +493,7 @@ def get_team_avg_stats():
     team_avg_list = pd.read_html("https://www.espn.com/nba/stats/team")
     team_avg = pd.concat([team_avg_list[0], team_avg_list[1]], axis = 1, sort=False)
 
-    team_avg['FP'] = team_avg["PTS"] + team_avg["REB"] * 1.2
+    team_avg['FP'] = team_avg["PTS"] + team_avg["REB"] * 1.2 + team_avg["AST"] * 1.5 + team_avg[""]
     # team_avg.at[i, 'FP'] = players.at[i, 'PTS'] * fan_pts_dict['PTS'] + players.at[i, 'TRB'] * fan_pts_dict['TRB'] \
     #                     + players.at[i, 'AST'] * fan_pts_dict['AST'] + players.at[i, 'STL'] * fan_pts_dict['STL'] \
     #                     + players.at[i, 'BLK'] * fan_pts_dict['BLK'] + players.at[i, 'TOV'] * fan_pts_dict['TOV']
