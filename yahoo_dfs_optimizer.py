@@ -135,10 +135,77 @@ def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
     
     
     # per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
-    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/NBA_2020_per_game.html")
-    per_game = per_game_list[0]
-    #per_game.sort_values(by = "Tm", inplace = True)
+    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/2020-nba-eastern-conference-finals-heat-vs-celtics.html")
+    
+    #HEAT
+    heat_per_game = per_game_list[9]
+    drop_cols = [i for i in range(21, len(heat_per_game.columns))]
+    heat_per_game.drop(heat_per_game.columns[drop_cols], axis = 1, inplace = True)
+    heat_per_game.drop(heat_per_game.shape[0] - 1, axis = 0, inplace = True)
+    heat_per_game.columns = heat_per_game.columns.droplevel()
+    heat_per_game["TOV"] = heat_per_game["TOV"] / heat_per_game["G"]
+    heat_per_game["PTS"] = heat_per_game["PTS"] / heat_per_game["G"]
+    heat_per_game["AST"] = heat_per_game["AST"] / heat_per_game["G"]
+    heat_per_game["TRB"] = heat_per_game["TRB"] / heat_per_game["G"]
+    heat_per_game["STL"] = heat_per_game["STL"] / heat_per_game["G"]
+    heat_per_game["BLK"] = heat_per_game["BLK"] / heat_per_game["G"]
+    heat_per_game["Tm"] = "MIA"
+    
+    #CELTICS
+    celtics_per_game = per_game_list[8]
+    drop_cols = [i for i in range(21, len(celtics_per_game.columns))]
+    celtics_per_game.drop(celtics_per_game.columns[drop_cols], axis = 1, inplace = True)
+    celtics_per_game.drop(celtics_per_game.shape[0] - 1, axis = 0, inplace = True)
+    celtics_per_game.columns = celtics_per_game.columns.droplevel()
+    celtics_per_game["TOV"] = celtics_per_game["TOV"] / celtics_per_game["G"]
+    celtics_per_game["PTS"] = celtics_per_game["PTS"] / celtics_per_game["G"]
+    celtics_per_game["AST"] = celtics_per_game["AST"] / celtics_per_game["G"]
+    celtics_per_game["TRB"] = celtics_per_game["TRB"] / celtics_per_game["G"]
+    celtics_per_game["STL"] = celtics_per_game["STL"] / celtics_per_game["G"]
+    celtics_per_game["BLK"] = celtics_per_game["BLK"] / celtics_per_game["G"]
+    celtics_per_game["Tm"] = "BOS"
+    
+    
+    
+    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/2020-nba-western-conference-finals-nuggets-vs-lakers.html")
 
+    
+    #LAKERS
+    lakers_per_game = per_game_list[6]
+    drop_cols = [i for i in range(21, len(lakers_per_game.columns))]
+    lakers_per_game.drop(lakers_per_game.columns[drop_cols], axis = 1, inplace = True)
+    lakers_per_game.drop(lakers_per_game.shape[0] - 1, axis = 0, inplace = True)
+    lakers_per_game.columns = lakers_per_game.columns.droplevel()
+    lakers_per_game["TOV"] = lakers_per_game["TOV"] / lakers_per_game["G"]
+    lakers_per_game["PTS"] = lakers_per_game["PTS"] / lakers_per_game["G"]
+    lakers_per_game["AST"] = lakers_per_game["AST"] / lakers_per_game["G"]
+    lakers_per_game["TRB"] = lakers_per_game["TRB"] / lakers_per_game["G"]
+    lakers_per_game["STL"] = lakers_per_game["STL"] / lakers_per_game["G"]
+    lakers_per_game["BLK"] = lakers_per_game["BLK"] / lakers_per_game["G"]
+    lakers_per_game["Tm"] = "LAL"
+    
+    #NUGGETS
+    nuggets_per_game = per_game_list[7]
+    drop_cols = [i for i in range(21, len(nuggets_per_game.columns))]
+    nuggets_per_game.drop(nuggets_per_game.columns[drop_cols], axis = 1, inplace = True)
+    nuggets_per_game.drop(nuggets_per_game.shape[0] - 1, axis = 0, inplace = True)
+    nuggets_per_game.columns = nuggets_per_game.columns.droplevel()
+    nuggets_per_game["TOV"] = nuggets_per_game["TOV"] / nuggets_per_game["G"]
+    nuggets_per_game["PTS"] = nuggets_per_game["PTS"] / nuggets_per_game["G"]
+    nuggets_per_game["AST"] = nuggets_per_game["AST"] / nuggets_per_game["G"]
+    nuggets_per_game["TRB"] = nuggets_per_game["TRB"] / nuggets_per_game["G"]
+    nuggets_per_game["STL"] = nuggets_per_game["STL"] / nuggets_per_game["G"]
+    nuggets_per_game["BLK"] = nuggets_per_game["BLK"] / nuggets_per_game["G"]
+    nuggets_per_game["Tm"] = "DEN"
+    
+    frames = [heat_per_game, celtics_per_game, nuggets_per_game, lakers_per_game]
+    
+    per_game = pd.concat(frames)
+    
+    #per_game.to_csv('per_game_stats.csv', index = False)
+    
+    #per_game.sort_values(by = "Tm", inplace = True)
+    
     #dealing name difference between bball reference and fantasypros
     per_game = per_game.replace({"Tm":"BRK"}, {"Tm":"BKN"})
 
@@ -160,7 +227,8 @@ def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
     per_game.to_csv("per_game_no_drop_salary.csv")
     per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
     per_game = per_game.drop(columns = ['Injured'],  axis = 1)
-    #per_game.to_csv('per_game_stats.csv')
+    per_game = per_game.reset_index()
+    per_game.to_csv('per_game_stats.csv')
 
     return per_game
 
@@ -460,7 +528,7 @@ def main():
     # players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
     # players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
     
-    players_season = calculate_fantasy_points(players_season, dvp_dict, True)
+    players_season = calculate_fantasy_points(players_season, dvp_dict, False)
     # players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
     # players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
     
