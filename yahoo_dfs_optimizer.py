@@ -44,7 +44,7 @@ def import_contest_data(team_opp, inactive_players, salaries, player_team, playe
     players = pd.read_csv("Yahoo_DF_player_export.csv")
 
     # convert team names from yahoo format to match with bball reference
-    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS"}   
+    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}   
     players = players.replace({"Team": team_name_transfer_dict_yahoo})
     players = players.replace({"Opponent": team_name_transfer_dict_yahoo})
 
@@ -75,7 +75,7 @@ def getting_dvp_by_pos():
     """
     
     dvp_dict = {}
-    url = "https://basketballmonster.com/DailyEaseRankings.aspx"
+    url = "https://basketballmonster.com/easerankings.aspx"
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
     driver.get(url)
 
@@ -96,15 +96,16 @@ def getting_dvp_by_pos():
 
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
-        whole_table = soup.findAll('tr', limit = 2)[1]
-        headers = [th.getText() for th in whole_table.findAll('tr', limit = 1)[0].findAll('td')]
-        rows = whole_table.findAll('tr')[1:]
+        
+        whole_table = soup.findAll('tr')
+        headers = [th.getText() for th in whole_table[0]]
+        rows = soup.findAll('tr')[1:]
         dvp_stats = [[td.getText() for td in rows[i].findAll('td')] for i in range(len(rows))]
 
         for i in range(len(dvp_stats)):
             dvp_stats[i][0] = dvp_stats[i][0].replace("vs", "")
             dvp_stats[i][0] = dvp_stats[i][0].strip()
-            dvp_stats[i][0] = dvp_stats[i][0].replace("NOR", "NOP")
+            dvp_stats[i][0] = dvp_stats[i][0].replace("NOR", "NOP").replace("CHA", "CHO")
 
         dvp_stats_df = pd.DataFrame(dvp_stats, columns = headers)
         dvp_stats_df = dvp_stats_df.drop(columns = ['Value', 'pV', 'rV', 'aV', 'sV', 'bV', 'toV'],  axis = 1)
@@ -134,92 +135,23 @@ def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
     """
     
     
-    # per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html")
-    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/2020-nba-eastern-conference-finals-heat-vs-celtics.html")
-    
-    #HEAT
-    heat_per_game = per_game_list[9]
-    drop_cols = [i for i in range(21, len(heat_per_game.columns))]
-    heat_per_game.drop(heat_per_game.columns[drop_cols], axis = 1, inplace = True)
-    heat_per_game.drop(heat_per_game.shape[0] - 1, axis = 0, inplace = True)
-    heat_per_game.columns = heat_per_game.columns.droplevel()
-    heat_per_game["TOV"] = heat_per_game["TOV"] / heat_per_game["G"]
-    heat_per_game["PTS"] = heat_per_game["PTS"] / heat_per_game["G"]
-    heat_per_game["AST"] = heat_per_game["AST"] / heat_per_game["G"]
-    heat_per_game["TRB"] = heat_per_game["TRB"] / heat_per_game["G"]
-    heat_per_game["STL"] = heat_per_game["STL"] / heat_per_game["G"]
-    heat_per_game["BLK"] = heat_per_game["BLK"] / heat_per_game["G"]
-    heat_per_game["Tm"] = "MIA"
-    
-    #CELTICS
-    celtics_per_game = per_game_list[8]
-    drop_cols = [i for i in range(21, len(celtics_per_game.columns))]
-    celtics_per_game.drop(celtics_per_game.columns[drop_cols], axis = 1, inplace = True)
-    celtics_per_game.drop(celtics_per_game.shape[0] - 1, axis = 0, inplace = True)
-    celtics_per_game.columns = celtics_per_game.columns.droplevel()
-    celtics_per_game["TOV"] = celtics_per_game["TOV"] / celtics_per_game["G"]
-    celtics_per_game["PTS"] = celtics_per_game["PTS"] / celtics_per_game["G"]
-    celtics_per_game["AST"] = celtics_per_game["AST"] / celtics_per_game["G"]
-    celtics_per_game["TRB"] = celtics_per_game["TRB"] / celtics_per_game["G"]
-    celtics_per_game["STL"] = celtics_per_game["STL"] / celtics_per_game["G"]
-    celtics_per_game["BLK"] = celtics_per_game["BLK"] / celtics_per_game["G"]
-    celtics_per_game["Tm"] = "BOS"
-    
-    
-    
-    per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/2020-nba-western-conference-finals-nuggets-vs-lakers.html")
-
-    
-    #LAKERS
-    lakers_per_game = per_game_list[6]
-    drop_cols = [i for i in range(21, len(lakers_per_game.columns))]
-    lakers_per_game.drop(lakers_per_game.columns[drop_cols], axis = 1, inplace = True)
-    lakers_per_game.drop(lakers_per_game.shape[0] - 1, axis = 0, inplace = True)
-    lakers_per_game.columns = lakers_per_game.columns.droplevel()
-    lakers_per_game["TOV"] = lakers_per_game["TOV"] / lakers_per_game["G"]
-    lakers_per_game["PTS"] = lakers_per_game["PTS"] / lakers_per_game["G"]
-    lakers_per_game["AST"] = lakers_per_game["AST"] / lakers_per_game["G"]
-    lakers_per_game["TRB"] = lakers_per_game["TRB"] / lakers_per_game["G"]
-    lakers_per_game["STL"] = lakers_per_game["STL"] / lakers_per_game["G"]
-    lakers_per_game["BLK"] = lakers_per_game["BLK"] / lakers_per_game["G"]
-    lakers_per_game["Tm"] = "LAL"
-    
-    #NUGGETS
-    nuggets_per_game = per_game_list[7]
-    drop_cols = [i for i in range(21, len(nuggets_per_game.columns))]
-    nuggets_per_game.drop(nuggets_per_game.columns[drop_cols], axis = 1, inplace = True)
-    nuggets_per_game.drop(nuggets_per_game.shape[0] - 1, axis = 0, inplace = True)
-    nuggets_per_game.columns = nuggets_per_game.columns.droplevel()
-    nuggets_per_game["TOV"] = nuggets_per_game["TOV"] / nuggets_per_game["G"]
-    nuggets_per_game["PTS"] = nuggets_per_game["PTS"] / nuggets_per_game["G"]
-    nuggets_per_game["AST"] = nuggets_per_game["AST"] / nuggets_per_game["G"]
-    nuggets_per_game["TRB"] = nuggets_per_game["TRB"] / nuggets_per_game["G"]
-    nuggets_per_game["STL"] = nuggets_per_game["STL"] / nuggets_per_game["G"]
-    nuggets_per_game["BLK"] = nuggets_per_game["BLK"] / nuggets_per_game["G"]
-    nuggets_per_game["Tm"] = "DEN"
-    
-    frames = [heat_per_game, celtics_per_game, nuggets_per_game, lakers_per_game]
-    
-    per_game = pd.concat(frames)
-    
-    #per_game.to_csv('per_game_stats.csv', index = False)
-    
+    per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2022_per_game.html")
+    # per_game_list = pd.read_html("https://www.basketball-reference.com/playoffs/NBA_2020_per_game.html")
+    per_game = per_game_list[0]
     #per_game.sort_values(by = "Tm", inplace = True)
-    
+
     #dealing name difference between bball reference and fantasypros
     per_game = per_game.replace({"Tm":"BRK"}, {"Tm":"BKN"})
 
     per_game["Salary"] = 0.0
     
-    # Adding opponent column    
-    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
+    # Adding opponent column
     per_game['Opponent'] = per_game['Tm'].map(team_opp)
     per_game['Injured'] = per_game['Player'].map(inactive_players)
+    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
     per_game["Pos"] = per_game["Player"].map(player_pos)
     per_game["Salary"] = per_game["Player"].replace(salaries)
 
-
-    # per_game.to_csv("per_game_no_drop_salary.csv")
     # Dropping players not playing today
     per_game = per_game[per_game.Injured.isnull()]
     per_game = per_game[per_game.Opponent.notnull()]
@@ -227,8 +159,7 @@ def get_per_game_stats(team_opp, inactive_players, salaries, player_pos):
     per_game.to_csv("per_game_no_drop_salary.csv")
     per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
     per_game = per_game.drop(columns = ['Injured'],  axis = 1)
-    per_game = per_game.reset_index()
-    per_game.to_csv('per_game_stats.csv')
+    #per_game.to_csv('per_game_stats.csv')
 
     return per_game
 
@@ -371,6 +302,16 @@ def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
                             + players.at[i, 'AST'] * fan_pts_dict['AST'] + players.at[i, 'STL'] * fan_pts_dict['STL'] \
                             + players.at[i, 'BLK'] * fan_pts_dict['BLK'] + players.at[i, 'TOV'] * fan_pts_dict['TOV']
 
+        # if players.at[i, 'Tm'] == "BOS" or players.at[i, "Tm"] == "NYK":
+        #     players.at[i, "FP"] *= 0.75
+
+        # if players.at[i, 'Tm'] == "CLE" or players.at[i, 'Tm'] == "CHO" or players.at[i, "Tm"] == "IND":
+        #     players.at[i, "FP"] *= 0.95
+
+        # if players.at[i, 'Tm'] == "SAC":
+        #     players.at[i, "FP"] *= 0.95
+
+
 
     # adjustment based on inactive players
     teams = set(players['Tm'].tolist())
@@ -477,6 +418,174 @@ def build_lineup(players, lineup_name = None):
     model += (F_constraint >= 3)
     model += (total_players <= 8)
 
+    # Select PG
+    # model += (PG_constraint <= 2)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 3)
+    # model += (SG_constraint >= 1)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 2)
+    # model += (C_constraint >= 1)
+    # model += (G_constraint >= 2)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 7)
+
+    # PF
+    # model += (PG_constraint <= 3)
+    # model += (PG_constraint >= 1)
+    # model += (SG_constraint <= 3)
+    # model += (SG_constraint >= 1)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 2)
+    # model += (PF_constraint >= 0)
+    # model += (C_constraint <= 2)
+    # model += (C_constraint >= 1)
+    # model += (G_constraint >= 3)
+    # model += (F_constraint >= 2)
+    # model += (total_players <= 7)
+
+
+    # Select C
+    # model += (PG_constraint <= 3)
+    # model += (PG_constraint >= 1)
+    # model += (SG_constraint <= 3)
+    # model += (SG_constraint >= 1)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 3)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 7)
+
+    # C & C
+    # model += (PG_constraint <= 3)
+    # model += (PG_constraint >= 1)
+    # model += (SG_constraint <= 3)
+    # model += (SG_constraint >= 1)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 0)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 3)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 6)
+
+    # SG & C & C
+    # model += (PG_constraint <= 3)
+    # model += (PG_constraint >= 1)
+    # model += (SG_constraint <= 2)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 0)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 2)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 5)
+
+    # Select PG & C
+    # model += (PG_constraint <= 2)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 3)
+    # model += (SG_constraint >= 1)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 3)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 6)
+
+    # PG SG C
+    # model += (PG_constraint <= 2)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 2)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 1)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 5)
+
+    # PG SG PF C
+    # model += (PG_constraint <= 2)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 2)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 2)
+    # model += (PF_constraint >= 0)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 1)
+    # model += (F_constraint >= 2)
+    # model += (total_players <= 4)
+
+    # PG SG G C
+    # model += (PG_constraint <= 1)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 1)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 3)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 3)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 0)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 4)
+
+    # PG SG G C C
+    # model += (PG_constraint <= 0)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 0)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 2)
+    # model += (SF_constraint >= 1)
+    # model += (PF_constraint <= 2)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 0)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 0)
+    # model += (F_constraint >= 3)
+    # model += (total_players <= 3)
+
+    # PG SG G SF C
+    # model += (PG_constraint <= 1)
+    # model += (PG_constraint >= 0)
+    # model += (SG_constraint <= 1)
+    # model += (SG_constraint >= 0)
+    # model += (SF_constraint <= 2)
+    # model += (SF_constraint >= 0)
+    # model += (PF_constraint <= 2)
+    # model += (PF_constraint >= 1)
+    # model += (C_constraint <= 1)
+    # model += (C_constraint >= 0)
+    # model += (G_constraint >= 0)
+    # model += (F_constraint >= 2)
+    # model += (total_players <= 3)
+
+
+
     #pulp.pulpTestAll()
 
     model.status
@@ -510,8 +619,13 @@ def main():
     player_pos = {}
 
     exclude_list_last_name =  []
-    exclude_players = [""]
-    exclude_list_time = []
+
+    # exclude_players = ["Brandon Clarke", "Oshae Brissett", "Thaddeus Young"] # 2021 not draft
+    # exclude_players = ["Brandon Clarke", "Oshae Brissett", "Thaddeus Young", "T.J. Warren", "Tyler Herro", "Myles Turner", "Malcolm Brogdon", "Ja Morant", "Keldon Johnson"]
+    # exclude_players = ["Sekou Doumbouya", "Gary Trent Jr.", "Scottie Barnes", "De'Anthony Melton", "LaMarcus Aldridge", "Jerami Grant", "Montrezl Harrell"]
+    exclude_players = ["Sekou Doumbouya"]
+    exclude_list_time = []  
+
     late_game = False
     if late_game:
         exclude_list_time = ['7:00PM EDT', '7:30PM EDT']
@@ -519,22 +633,24 @@ def main():
     yahoo_contest = import_contest_data(team_opp, inactive_players, salaries, player_team, player_pos)
     #get_team_avg_stats()
     dvp_dict = getting_dvp_by_pos()
-    
+    # dvp_dict = {}
+
     #exluding players that you don't want to pick
     for name in exclude_players:
         inactive_players[name] = 1
 
     players_season = get_per_game_stats(team_opp, inactive_players, salaries, player_pos)
-    # players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
-    # players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
+    players_last_15 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 15)
+    players_last_7 = get_last_x_days_per_game(team_opp, inactive_players, salaries, player_team, player_pos, 7)
     
-    players_season = calculate_fantasy_points(players_season, dvp_dict, False)
-    # players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
-    # players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
+    players_season = calculate_fantasy_points(players_season, dvp_dict, True)
+    # players_season = calculate_fantasy_points(players_season, dvp_dict, False)
+    players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
+    players_last_7 = calculate_fantasy_points(players_last_7, dvp_dict)
     
     build_lineup(players_season, "Per Game")
-    # build_lineup(players_last_15, "Last 15 Days")
-    # build_lineup(players_last_7, "Last 7 Days")
+    build_lineup(players_last_15, "Last 15 Days")
+    build_lineup(players_last_7, "Last 7 Days")
 
 
     #players = adjust_fppg_by_pace(players)
@@ -561,7 +677,7 @@ def get_team_avg_stats():
     team_avg_list = pd.read_html("https://www.espn.com/nba/stats/team")
     team_avg = pd.concat([team_avg_list[0], team_avg_list[1]], axis = 1, sort=False)
 
-    team_avg['FP'] = team_avg["PTS"] + team_avg["REB"] * 1.2 + team_avg["AST"] * 1.5 + team_avg[""]
+    team_avg['FP'] = team_avg["PTS"] + team_avg["REB"] * 1.2
     # team_avg.at[i, 'FP'] = players.at[i, 'PTS'] * fan_pts_dict['PTS'] + players.at[i, 'TRB'] * fan_pts_dict['TRB'] \
     #                     + players.at[i, 'AST'] * fan_pts_dict['AST'] + players.at[i, 'STL'] * fan_pts_dict['STL'] \
     #                     + players.at[i, 'BLK'] * fan_pts_dict['BLK'] + players.at[i, 'TOV'] * fan_pts_dict['TOV']
@@ -614,5 +730,4 @@ def adjust_fppg_by_pace(players_df):
 
 if __name__ == "__main__":
     sys.exit(main())  
-
 
