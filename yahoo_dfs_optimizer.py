@@ -36,7 +36,17 @@ def getting_dvp_by_pos(driver):
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
     driver.get(url)
 
+    date_filter_control_path = "//select[@name='DateFilterControl']/option[@value='{}']"
     position_dropdown_xpath = "//select[@name='ctl00$ContentPlaceHolder1$PositionDropDownList']/option[@value='{}']"
+
+    element = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, date_filter_control_path.format("LastTwoWeeks")))
+    )
+    element.click()
+    WebDriverWait(driver, 10).until(
+        EC.text_to_be_present_in_element((By.XPATH, date_filter_control_path.format("LastTwoWeeks")), "Past 2 Weeks")
+    )
+    time.sleep(0.1)
 
     for option, pos in option_dict.items():
         element = WebDriverWait(driver, 10).until(
@@ -70,54 +80,9 @@ def getting_dvp_by_pos(driver):
 
     return dvp_dict
 
-def get_per_game_stats(contest_data):
-    """
-        Gets season per game stats and adjusts the dataframe based on Yahoo contest data
-        
-        Parameters:
-            team_opp: dict
-                information of which 2 teams play agaisnt each other
-            
-            inactive_players: dict
-                information of which players are not playing tonight
-            
-            salaries: dict
-                players' yahoo daily fantasy contest salary
-                        
-        Return:
-            DataFrame: Season per game stats dataframe        
-       
-    """
-    
-    
-    per_game_list = pd.read_html("https://www.basketball-reference.com/leagues/NBA_2024_per_game.html")
-    per_game = per_game_list[0]
-    #per_game.sort_values(by = "Tm", inplace = True)
-
-    #dealing name difference between bball reference and fantasypros
-    per_game = per_game.replace({"Tm":"BRK"}, {"Tm":"BKN"})
-
-    per_game["Salary"] = 0.0
-    
-    # Adding opponent column
-    per_game['Opponent'] = per_game['Tm'].map(contest_data.team_opp)
-    per_game['Injured'] = per_game['Player'].map(contest_data.inactive_players)
-    per_game['Player'] = per_game["Player"].apply(lambda x: formalize_name(x))
-    per_game["Pos"] = per_game["Player"].map(contest_data.player_pos)
-    per_game["Salary"] = per_game["Player"].replace(contest_data.salaries)
-
-    # Dropping players not playing today
-    per_game = per_game[per_game.Injured.isnull()]
-    per_game = per_game[per_game.Opponent.notnull()]
-
-    per_game = per_game[pd.to_numeric(per_game['Salary'], errors = "coerce").notnull()]
-    per_game = per_game.drop(columns = ['Injured'],  axis = 1)
-
-    return per_game
 
 
-
-def get_last_x_days_per_game(contest_data, days):
+def get_last_x_days_per_game(contest_data, days=None):
     
     """
         Gets last 15 days per game stats and adjusts the dataframe based on Yahoo contest data
@@ -169,11 +134,14 @@ def get_last_x_days_per_game(contest_data, days):
     last_x_days = last_x_days[pd.to_numeric(last_x_days['Salary'], errors = "coerce").notnull()]
     last_x_days = last_x_days.drop(columns = ['Injured'],  axis = 1)
     last_x_days = last_x_days.rename(columns = {"REB": "TRB", "TO": "TOV"})
+    # Filter rows where Min is 0
+    players_with_zero_min = last_x_days[last_x_days['MIN'] == 0]
+    players_with_less_than_two_games = last_x_days[last_x_days['GP'] <= 2]
+    players_with_less_than_two_games = players_with_less_than_two_games[players_with_less_than_two_games['GP'] > 0]
+    print(players_with_less_than_two_games)
 
     return last_x_days
    
-
-
 def formalize_name(name):
     """
     Gets and returns player name according to Yahoo Fantasy format
@@ -419,7 +387,107 @@ def import_contest_data(contest_data: ContestData) -> pd.DataFrame:
         contest_data.player_pos[player_name] = player.get("Position")
 
     return players
+
+def import_contest_data_by_csv(contest_data: ContestData):
+    """
+        Import yahoo daily fantasy contest data and acquire information for building lineup
+        Paramenters:
+            team_opp: dict
+                dictionary to contain information of which 2 teams play agaisnt each other 
+            inactive_players: dict
+                dictionary to contain information of players not playing tonight
+            salaries: dict
+                dictionary to contain information of players' dfs contest salary
+            player_team: dict
+                dictionary to contain information of players' current team
+            player_pos: dict
+                dictionary to contain information of players' position based on yahoo contest
+        Returns: DataFrame
+            yahoo contest dataframe
     
+    """
+    players = pd.read_csv("Yahoo_DF_player_export.csv")
+
+    # convert team names from yahoo format to match with bball reference
+    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}   
+    players = players.replace({"Team": team_name_transfer_dict_yahoo})
+    players = players.replace({"Opponent": team_name_transfer_dict_yahoo})
+
+    for i, player in players.iterrows():
+        player_name = player.get("First Name") + ' ' + player.get("Last Name")
+        player_name = formalize_name(player_name)
+        if player.get("Injury Status") == "INJ" or player.get("Injury Status") == "O":
+            contest_data.inactive_players[player_name] = 1
+        if player.get("Team") not in contest_data.team_opp:
+            contest_data.team_opp[player.get("Team")] = player.get("Opponent")
+        contest_data.salaries[player_name] = int(player.get("Salary"))
+        contest_data.player_team[player_name] = player.get("Team")
+        contest_data.player_pos[player_name] = player.get("Position")
+
+
+    return players
+
+def get_team_averages():
+    url = "https://www.basketball-reference.com/leagues/NBA_2024.html"
+    team_abbreviations = {
+        "Indiana Pacers": "IND",
+        "Milwaukee Bucks": "MIL",
+        "Oklahoma City Thunder": "OKC",
+        "Atlanta Hawks": "ATL",
+        "Boston Celtics": "BOS",
+        "Golden State Warriors": "GSW",
+        "Dallas Mavericks": "DAL",
+        "Sacramento Kings": "SAC",
+        "Utah Jazz": "UTA",
+        "Los Angeles Clippers": "LAC",
+        "Phoenix Suns": "PHX",
+        "Philadelphia 76ers": "PHI",
+        "Los Angeles Lakers": "LAL",
+        "New Orleans Pelicans": "NOP",
+        "Denver Nuggets": "DEN",
+        "Toronto Raptors": "TOR",
+        "Washington Wizards": "WAS",
+        "Cleveland Cavaliers": "CLE",
+        "New York Knicks": "NYK",
+        "Minnesota Timberwolves": "MIN",
+        "Houston Rockets": "HOU",
+        "Detroit Pistons": "DET",
+        "Brooklyn Nets": "BKN",
+        "San Antonio Spurs": "SAS",
+        "Chicago Bulls": "CHI",
+        "Orlando Magic": "ORL",
+        "Miami Heat": "MIA",
+        "Charlotte Hornets": "CHA",
+        "Portland Trail Blazers": "POR",
+        "Memphis Grizzlies": "MEM"
+    }
+
+    team_stats_tables = pd.read_html(url, match="Per Game Stats", flavor="lxml")
+    selected_columns = ["Team", "PTS", "TRB", "AST", "STL", "BLK", "TOV"]
+    desired_data = team_stats_tables[0][selected_columns]
+    desired_data["Team"] = desired_data["Team"].map(team_abbreviations, na_action='ignore')
+
+    return desired_data
+
+def get_team_sums(players):
+    # Group by the 'Tm' (Team) column and calculate the mean for each numeric column
+    team_sums = players.groupby('Tm', as_index=False).sum()
+    selected_columns = ["Tm", "PTS", "TRB", "AST", "STL", "BLK", "TOV"]
+    team_sums = team_sums[selected_columns]
+
+    return team_sums
+
+def calculate_adjustments_based_on_team_average(team_sums, team_avg):
+    team_avg = team_avg[team_avg['Team'].isin(team_sums['Tm'])].reset_index()
+    # Reorder rows in df2 to match the order in df1
+    team_sums = team_sums.set_index('Tm').reindex(team_avg['Team']).reset_index()
+
+    columns_to_calculate = ['PTS', 'TRB', 'AST', 'STL', 'BLK', 'TOV']
+    for col in columns_to_calculate:
+        team_sums[col] = team_avg[col] / team_sums[col]
+
+    return team_sums
+
 def main():
     contest_id = find_first_contest()
     contest_data_instance = ContestData(
@@ -432,16 +500,22 @@ def main():
     )
     driver = webdriver.Chrome()
 
-    exclude_players = [""]
+    exclude_players = []
 
-    import_contest_data(contest_data_instance)
+    # import_contest_data(contest_data_instance)
+    import_contest_data_by_csv(contest_data_instance)
     dvp_dict = getting_dvp_by_pos(driver)
 
     #exluding players that you don't want to pick
     for name in exclude_players:
         contest_data_instance.inactive_players[name] = 1
 
+    # players_season = get_per_game_stats(contest_data_instance)
     players_last_15 = get_last_x_days_per_game(contest_data_instance, 15)
+    # team_average_data = get_team_averages()
+    # team_sums = get_team_sums(players_last_15)
+    # print(type(team_sums))
+    # calculate_adjustments_based_on_team_average(team_sums, team_average_data)
     
     players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
     
