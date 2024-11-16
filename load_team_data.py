@@ -1,7 +1,7 @@
 import pandas as pd
 
 def get_team_averages():
-    url = "https://www.basketball-reference.com/leagues/NBA_2024.html"
+    url = "https://www.basketball-reference.com/leagues/NBA_2025.html"
     team_abbreviations = {
         "Indiana Pacers": "IND",
         "Milwaukee Bucks": "MIL",

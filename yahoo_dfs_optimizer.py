@@ -23,14 +23,14 @@ class ContestData:
 def getting_dvp_by_pos(driver):
     """
         Returns a dictionary contains defense versus position dataframe of each NBA team
-        
+
         Parameters:
             None
-        
+
         Return:
             dict: a dictionary with dvp dataframe for 5 different position (PG, SG, SF, PF, C)
     """
-    
+
     dvp_dict = {}
     url = "https://basketballmonster.com/easerankings.aspx"
     option_dict = {"3": "C", "4": "PG", "5": "SG", "6": "SF", "7": "PF"}
@@ -60,7 +60,7 @@ def getting_dvp_by_pos(driver):
 
         page = driver.page_source
         soup = BeautifulSoup(page, 'html.parser')
-        
+
         whole_table = soup.findAll('tr')
         headers = [th.getText() for th in whole_table[0]]
         rows = soup.findAll('tr')[1:]
@@ -83,41 +83,41 @@ def getting_dvp_by_pos(driver):
 
 
 def get_last_x_days_per_game(contest_data, days=None):
-    
+
     """
         Gets last 15 days per game stats and adjusts the dataframe based on Yahoo contest data
-        
+
         Parameters:
             team_opp: dict
                 information of which 2 teams play agaisnt each other
-            
+
             inactive_players: dict
                 information of which players are not playing tonight
-            
+
             salaries: dict
                 players' yahoo daily fantasy contest salary
-                
+
             player_team: dict
                 information of player's current team
-            
+
             player_pos: dict
                 information of player's position based on yahoo contest
-        
+
         Return:
-            DataFrame: Last 15 days per game stats dataframe        
-       
+            DataFrame: Last 15 days per game stats dataframe
+
     """
-    
+
     last_x_days = pd.read_html("https://www.fantasypros.com/nba/stats/avg-overall.php?days={}".format(days))
     last_x_days = last_x_days[0]
 
     last_x_days['Tm'] = ''
     last_x_days['Pos'] = ''
-    
+
     # Damian Lillard (POR - PG)  get rid of (POR - PG) part
     for i, player in last_x_days.iterrows():
         if "(" in last_x_days.at[i, "Player"]:
-            last_x_days.at[i, "Player"] = player.Player[:player.Player.index('(')]    
+            last_x_days.at[i, "Player"] = player.Player[:player.Player.index('(')]
 
     last_x_days['Player'] = last_x_days["Player"].apply(lambda x: formalize_name(x))
     last_x_days['Tm'] = last_x_days["Player"].map(contest_data.player_team)
@@ -125,7 +125,7 @@ def get_last_x_days_per_game(contest_data, days=None):
     last_x_days["Salary"] = last_x_days["Player"].map(contest_data.salaries)
     last_x_days['Injured'] = last_x_days["Player"].map(contest_data.inactive_players)
     last_x_days['Opponent'] = last_x_days['Tm'].map(contest_data.team_opp)
-    
+
     # Take out inactive players and players who are not playing today
     last_x_days = last_x_days[last_x_days.Injured.isnull()]
     last_x_days = last_x_days[last_x_days.Opponent.notnull()]
@@ -141,15 +141,15 @@ def get_last_x_days_per_game(contest_data, days=None):
     print(players_with_less_than_two_games)
 
     return last_x_days
-   
+
 def formalize_name(name):
     """
     Gets and returns player name according to Yahoo Fantasy format
-    
+
     Parameters:
         name: str
             Player's name
-    
+
     Returns:
         str: Player's name after uniform formatting
     """
@@ -174,21 +174,21 @@ def formalize_name(name):
 
 def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
     """
-        Adjust players stats based on defens vs postion with the team they play against. 
+        Adjust players stats based on defens vs postion with the team they play against.
         After that calculate fantasy points based on yahoo scoring rule
-        
+
         Parameters:
             playeres: dataframe
                 dataframe which conatins stats of all players who are playing tonight
-            
+
             dvp_dict: dict
                 defense versus position information
-                
+
         Returns:
             DataFrame: players stats after adjustment
-    
+
     """
-    
+
 
     fan_pts_dict = {'PTS':1.0, 'TRB':1.2, 'AST':1.5, 'STL':3.0, 'BLK':3.0, 'TOV':-1.0}
 
@@ -196,7 +196,7 @@ def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
 
     for i, player in players.iterrows():
         player_pos = player.get("Pos")
-        
+
         # Special case for Trey Burke on basketball reference
         if player_pos == 'G':
             player_pos = 'PG'
@@ -217,13 +217,13 @@ def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
             blk_mod = 1
             tov_mod = 1
 
-        
-        players.at[i, 'PTS'] = round(pts_mod * float(players.at[i, 'PTS']), 1) 
-        players.at[i, 'TRB'] = round(reb_mod * float(players.at[i, 'TRB']), 1) 
-        players.at[i, 'AST'] = round(ast_mod * float(players.at[i, 'AST']), 1) 
-        players.at[i, 'STL'] = round(stl_mod * float(players.at[i, 'STL']), 1) 
-        players.at[i, 'BLK'] = round(blk_mod * float(players.at[i, 'BLK']), 1) 
-        players.at[i, 'TOV'] = round(tov_mod * float(players.at[i, 'TOV']), 1) 
+
+        players.at[i, 'PTS'] = round(pts_mod * float(players.at[i, 'PTS']), 1)
+        players.at[i, 'TRB'] = round(reb_mod * float(players.at[i, 'TRB']), 1)
+        players.at[i, 'AST'] = round(ast_mod * float(players.at[i, 'AST']), 1)
+        players.at[i, 'STL'] = round(stl_mod * float(players.at[i, 'STL']), 1)
+        players.at[i, 'BLK'] = round(blk_mod * float(players.at[i, 'BLK']), 1)
+        players.at[i, 'TOV'] = round(tov_mod * float(players.at[i, 'TOV']), 1)
 
         players.at[i, 'FP'] = players.at[i, 'PTS'] * fan_pts_dict['PTS'] + players.at[i, 'TRB'] * fan_pts_dict['TRB'] \
                             + players.at[i, 'AST'] * fan_pts_dict['AST'] + players.at[i, 'STL'] * fan_pts_dict['STL'] \
@@ -232,7 +232,7 @@ def calculate_fantasy_points(players, dvp_dict, apply_dvp = True):
     # adjustment based on inactive players
     teams = set(players['Tm'].tolist())
     for team in teams:
-        team_total = players.loc[players['Tm'] == team, 'FP'].sum()        
+        team_total = players.loc[players['Tm'] == team, 'FP'].sum()
         print ("{} FP total is : {}".format(team, team_total))
 
     return players
@@ -251,7 +251,7 @@ def build_lineup(players, lineup_name = None):
     """
 
     players = players.reindex()
-    
+
     players["PG"] = (players["Pos"] == 'PG').astype(float)
     players["SG"] = (players["Pos"] == 'SG').astype(float)
     players["SF"] = (players["Pos"] == 'SF').astype(float)
@@ -276,7 +276,7 @@ def build_lineup(players, lineup_name = None):
     Fs = {}
     Cs = {}
     number_of_players = {}
-    
+
     # i = row index, player = player attributes
     for i, player in players.iterrows():
 
@@ -285,7 +285,7 @@ def build_lineup(players, lineup_name = None):
 
         total_points[decision_var] = player["FP"] # Create PPG Dictionary
         cost[decision_var] = player["Salary"] # Create Cost Dictionary
-        
+
         # Create Dictionary for Player Types
         PGs[decision_var] = player["PG"]
         SGs[decision_var] = player["SG"]
@@ -295,7 +295,7 @@ def build_lineup(players, lineup_name = None):
         Gs[decision_var] = player["PG"] or player["SG"]
         Fs[decision_var] = player["SF"] or player["PF"]
         number_of_players[decision_var] = 1.0
-        
+
     # Define ojective function and add it to the model
     objective_function = LpAffineExpression(total_points)
     model += objective_function
@@ -341,7 +341,7 @@ def build_lineup(players, lineup_name = None):
 
     my_team = players[players["is_drafted"] == 1.0]
     my_team = my_team[["Player", "Pos","Tm","Salary","FP"]]
-    
+
     print ("Line up build by {} stats".format(lineup_name))
     print (my_team)
     print ("Total used amount of salary cap: {}".format(my_team["Salary"].sum()))
@@ -352,7 +352,7 @@ def find_first_contest():
     response = requests.get(static_url)
     soup = BeautifulSoup(response.text, "html.parser")
     first_contest = soup.find("a", class_="contestCard")
-    
+
     if first_contest:
         first_contest_link = first_contest["href"]
         # Assuming the link format is consistent (e.g., /contest/<contest_id>/setlineup)
@@ -366,7 +366,7 @@ def find_first_contest():
 def import_contest_data(contest_data: ContestData) -> pd.DataFrame:
     """
         Returns: DataFrame
-            yahoo contest dataframe 
+            yahoo contest dataframe
     """
     players = pd.read_csv(f"https://dfyql-ro.sports.yahoo.com/v2/export/contestPlayers?contestId={contest_data.contest_id}")
 
@@ -393,7 +393,7 @@ def import_contest_data_by_csv(contest_data: ContestData):
         Import yahoo daily fantasy contest data and acquire information for building lineup
         Paramenters:
             team_opp: dict
-                dictionary to contain information of which 2 teams play agaisnt each other 
+                dictionary to contain information of which 2 teams play agaisnt each other
             inactive_players: dict
                 dictionary to contain information of players not playing tonight
             salaries: dict
@@ -404,12 +404,12 @@ def import_contest_data_by_csv(contest_data: ContestData):
                 dictionary to contain information of players' position based on yahoo contest
         Returns: DataFrame
             yahoo contest dataframe
-    
+
     """
     players = pd.read_csv("Yahoo_DF_player_export.csv")
 
     # convert team names from yahoo format to match with bball reference
-    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}   
+    team_name_transfer_dict_yahoo = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}
     players = players.replace({"Team": team_name_transfer_dict_yahoo})
     players = players.replace({"Opponent": team_name_transfer_dict_yahoo})
 
@@ -428,7 +428,7 @@ def import_contest_data_by_csv(contest_data: ContestData):
     return players
 
 def get_team_averages():
-    url = "https://www.basketball-reference.com/leagues/NBA_2024.html"
+    url = "https://www.basketball-reference.com/leagues/NBA_2025.html"
     team_abbreviations = {
         "Indiana Pacers": "IND",
         "Milwaukee Bucks": "MIL",
@@ -502,8 +502,8 @@ def main():
 
     exclude_players = []
 
-    # import_contest_data(contest_data_instance)
-    import_contest_data_by_csv(contest_data_instance)
+    import_contest_data(contest_data_instance)
+    # import_contest_data_by_csv(contest_data_instance)
     dvp_dict = getting_dvp_by_pos(driver)
 
     #exluding players that you don't want to pick
@@ -516,11 +516,11 @@ def main():
     # team_sums = get_team_sums(players_last_15)
     # print(type(team_sums))
     # calculate_adjustments_based_on_team_average(team_sums, team_average_data)
-    
+
     players_last_15 = calculate_fantasy_points(players_last_15, dvp_dict)
-    
+
     build_lineup(players_last_15, "Last 15 Days")
 
 if __name__ == "__main__":
-    sys.exit(main())  
+    sys.exit(main())
 
