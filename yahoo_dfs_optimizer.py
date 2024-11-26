@@ -239,7 +239,7 @@ def calculate_fantasy_points(players, dvp_data, apply_dvp=True):
     return players
 
 
-def build_lineup(players, lineup_name=None):
+def build_lineup(players, lineup_name=None, selected_players=[]):
     """
     Builds the optimal lineup based on player salaries and projected fantasy points.
 
@@ -270,9 +270,8 @@ def build_lineup(players, lineup_name=None):
     total_points = {var: players.at[i, 'FP'] for i, var in enumerate(decision_vars)}
     model += LpAffineExpression(total_points), "Total Fantasy Points"
 
-    # Constraints
-    total_cost = {var: players.at[i, 'Salary'] for i, var in enumerate(decision_vars)}
-    model += LpAffineExpression(total_cost) <= 200, "Total Salary Cap"
+    salary_cap = 200
+    total_players_count = 8  # Total number of players in the lineup
 
     # Position constraints
     position_constraints = {
@@ -285,15 +284,67 @@ def build_lineup(players, lineup_name=None):
         'F': (3, None),
     }
 
+    # Handle pre-selected players
+    for name in selected_players:
+        player = players[players["Player"] == name]
+
+        if player.empty:
+            print(f"Player '{name}' not found in the player pool. Skipping...")
+            continue
+
+        # Adjust salary cap
+        salary = player["Salary"].iloc[0]
+        salary_cap -= salary
+
+        if salary_cap < 0:
+            print(f"Error: Selecting {name} exceeds the salary cap.")
+            return
+
+        # Adjust total players
+        total_players_count -= 1
+        if total_players_count < 0:
+            print(f"Error: Too many pre-selected players. Exceeds total player limit.")
+            return
+
+        # Adjust positional constraints
+        position = player["Pos"].iloc[0]
+        if position in position_constraints:
+            min_pos, max_pos = position_constraints[position]
+            if max_pos is not None:
+                position_constraints[position] = (min_pos - 1, max_pos - 1)
+            else:
+                position_constraints[position] = (min_pos - 1, None)
+
+        # Handle grouped positions (e.g., G and F)
+        if position in ["PG", "SG"]:
+            g_min, g_max = position_constraints["G"]
+            if g_max is not None:
+                position_constraints["G"] = (g_min - 1, g_max - 1)
+            else:
+                position_constraints["G"] = (g_min - 1, None)
+
+        if position in ["SF", "PF"]:
+            f_min, f_max = position_constraints["F"]
+            if f_max is not None:
+                position_constraints["F"] = (f_min - 1, f_max - 1)
+            else:
+                position_constraints["F"] = (f_min - 1, None)
+
+        print(f"Pre-selected {name}: Salary = {salary}, Position = {position}")
+
     for pos, (min_count, max_count) in position_constraints.items():
         pos_vars = {var: players.at[i, pos] for i, var in enumerate(decision_vars)}
         if max_count is not None:
             model += LpAffineExpression(pos_vars) <= max_count, f"Max {pos}"
         model += LpAffineExpression(pos_vars) >= min_count, f"Min {pos}"
 
+    # Constraints
+    total_cost = {var: players.at[i, 'Salary'] for i, var in enumerate(decision_vars)}
+    model += LpAffineExpression(total_cost) <= salary_cap, "Total Salary Cap"
+
     # Total players constraint
     total_players = {var: 1.0 for var in decision_vars}
-    model += LpAffineExpression(total_players) == 8, "Total Players"
+    model += LpAffineExpression(total_players) == total_players_count, "Total Players"
 
     # Solve the model
     model.solve()
@@ -391,6 +442,7 @@ def main():
 
     # Exclude specific players if needed
     exclude_players = []
+    selected_players = []
 
     import_contest_data(contest_data)
     for name in exclude_players:
@@ -403,7 +455,7 @@ def main():
         return
 
     players_stats = calculate_fantasy_points(players_stats, dvp_data)
-    build_lineup(players_stats, lineup_name="Last 15 Days")
+    build_lineup(players_stats, lineup_name="Last 15 Days", selected_players=selected_players)
 
 
 if __name__ == "__main__":
