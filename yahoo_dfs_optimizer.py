@@ -1,5 +1,4 @@
 import sys
-import time
 from dataclasses import dataclass
 
 import pandas as pd
@@ -246,6 +245,7 @@ def build_lineup(players, lineup_name=None, selected_players=[]):
     Parameters:
         players (DataFrame): Players DataFrame with salary and fantasy point information.
         lineup_name (str): Name of the lineup for display purposes.
+        selected_players (list): List of pre-selected player names.
 
     Returns:
         None
@@ -285,12 +285,15 @@ def build_lineup(players, lineup_name=None, selected_players=[]):
     }
 
     # Handle pre-selected players
+    pre_selected_players = []
     for name in selected_players:
         player = players[players["Player"] == name]
 
         if player.empty:
             print(f"Player '{name}' not found in the player pool. Skipping...")
             continue
+
+        pre_selected_players.append(player)
 
         # Adjust salary cap
         salary = player["Salary"].iloc[0]
@@ -349,10 +352,14 @@ def build_lineup(players, lineup_name=None, selected_players=[]):
     # Solve the model
     model.solve()
 
-    # Extract the lineup
+    # Extract drafted players
     players['is_drafted'] = [var.varValue for var in decision_vars]
     drafted_players = players[players['is_drafted'] == 1.0]
     lineup = drafted_players[['Player', 'Pos', 'Tm', 'Salary', 'FP']]
+
+    # Add pre-selected players to the lineup
+    for pre_player in pre_selected_players:
+        lineup = pd.concat([lineup, pre_player[['Player', 'Pos', 'Tm', 'Salary', 'FP']]])
 
     print(f"Lineup built using {lineup_name} stats:")
     print(lineup)
