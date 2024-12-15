@@ -1,12 +1,4 @@
-
-last_10_days.csv
-last_15_days.csv
-mod_per_game.csv
-per_game_no_drop_salary.csv
-per_game_stats.csv
-result.csv
 *.csv
-Yahoo_DF_player_export.csv
 *.mps
-Yahoo_DF_player_export.csv
+*.db
 yahoo_dfs_env
