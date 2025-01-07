@@ -167,9 +167,11 @@ def get_last_x_days_per_game(contest_data, days=15):
     # Rename columns to match expected format
     last_x_days.rename(columns={"REB": "TRB", "TO": "TOV"}, inplace=True)
 
-    # Filter out players with 0 minutes or less than 2 games played
-    last_x_days = last_x_days[last_x_days['MIN'] > 0]
-    last_x_days = last_x_days[last_x_days['GP'] > 2]
+    # Mark players who don't meet the MIN/GP thresholds as ineligible
+    last_x_days['Ineligible'] = False
+
+    # If a player has 0 (or less) MIN or GP ≤ 2, mark as ineligible
+    last_x_days.loc[(last_x_days['MIN'] <= 0) | (last_x_days['GP'] <= 2), 'Ineligible'] = True
 
     return last_x_days
 
@@ -272,6 +274,11 @@ def build_lineup(players, lineup_name=None, selected_players=[]):
 
     salary_cap = 200
     total_players_count = 8  # Total number of players in the lineup
+
+    for i, row in players.iterrows():
+        if row.get('Ineligible', False):
+            # Force the solver to assign '0' if the player is ineligible
+            model += decision_vars[i] == 0, f"Ineligible_{i}"
 
     # Position constraints
     position_constraints = {
