@@ -399,22 +399,47 @@ def find_first_contest():
         return None
 
 
-def import_contest_data(contest_data: ContestData) -> pd.DataFrame:
+def import_contest_data(contest_data: ContestData, csv_path: str = None) -> pd.DataFrame:
     """
-    Imports contest data and populates ContestData attributes.
+    Imports contest data from Yahoo or DraftKings and populates ContestData attributes.
 
     Parameters:
         contest_data (ContestData): The ContestData instance to populate.
+        csv_path (str, optional): Path to a local CSV file. If provided, data is read from the file instead of a URL.
 
     Returns:
         DataFrame: DataFrame of players from the contest.
     """
     try:
-        players_url = f"https://dfyql-ro.sports.yahoo.com/v2/export/contestPlayers?contestId={contest_data.contest_id}"
-        players = pd.read_csv(players_url)
+        if csv_path:
+            players = pd.read_csv(csv_path)
+        else:
+            players_url = f"https://dfyql-ro.sports.yahoo.com/v2/export/contestPlayers?contestId={contest_data.contest_id}"
+            players = pd.read_csv(players_url)
     except Exception as e:
         print(f"Error importing contest data: {e}")
         return pd.DataFrame()
+
+    # Handle DraftKings-specific columns
+    if 'TeamAbbrev' in players.columns:
+        players.rename(columns={'TeamAbbrev': 'Team'}, inplace=True)
+
+    # Extract Opponent from "Game Info" column based on the player's team
+    if 'Game Info' in players.columns:
+        def get_opponent(row):
+            if '@' in row['Game Info']:
+                teams = row['Game Info'].split('@')
+                home_team = teams[1].split()[0]  # Extract team from second part
+                away_team = teams[0].split()[0]  # Extract team from first part
+
+                # Determine the opponent based on player's team
+                if row['Team'] == home_team:
+                    return away_team
+                elif row['Team'] == away_team:
+                    return home_team
+            return None  # Fallback in case of unexpected format
+
+        players['Opponent'] = players.apply(get_opponent, axis=1)
 
     # Team name corrections
     team_name_corrections = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}
@@ -422,8 +447,8 @@ def import_contest_data(contest_data: ContestData) -> pd.DataFrame:
 
     # Populate ContestData attributes
     for _, player in players.iterrows():
-        player_name = formalize_name(f"{player['First Name']} {player['Last Name']}")
-        if player.get("Injury Status") in {"INJ", "O"}:
+        player_name = formalize_name(player.get("Name", f"{player.get('First Name', '')} {player.get('Last Name', '')}"))
+        if player.get("Injury Status") in {"INJ", "O", "D"}:
             contest_data.inactive_players[player_name] = 1
         if player["Team"] not in contest_data.team_opponents:
             contest_data.team_opponents[player["Team"]] = player["Opponent"]
