@@ -458,6 +458,59 @@ def import_contest_data(contest_data: ContestData, csv_path: str = None) -> pd.D
 
     return players
 
+def calculate_team_minutes(players):
+    """
+    Calculate the total minutes played by each team for non-injured players,
+    grouped by position and sorted by total minutes in ascending order.
+
+    Parameters:
+    -----------
+    players : pd.DataFrame
+        A DataFrame containing at least the following columns:
+          - 'Tm' (team name/abbreviation)
+          - 'MIN' (minutes played)
+          - 'Pos' (position, which can be single or multiple for DraftKings)
+
+    Returns:
+    --------
+    pd.DataFrame
+        A DataFrame with columns ['Tm', 'TotalMinutes', 'TotalMinutes_PG', ...]
+        showing the sum of minutes for non-injured players, grouped by team and position.
+    """
+
+    position_categories = ['PG', 'SG', 'SF', 'PF', 'C']
+
+    # Expand multi-position players (for DraftKings)
+    for pos in position_categories:
+        players[pos] = players['Pos'].apply(lambda x: pos in x if isinstance(x, list) else x == pos)
+
+    # Group by team and position, then sum minutes
+    team_position_minutes = (
+        players
+        .melt(id_vars=['Tm', 'MIN'], value_vars=position_categories, var_name='Position', value_name='IsPosition')
+        .query("IsPosition == True")  # Filter out non-matching positions
+        .groupby(['Tm', 'Position'], as_index=False)['MIN']
+        .sum()
+        .pivot(index='Tm', columns='Position', values='MIN')
+        .fillna(0)
+        .rename(columns=lambda x: f'TotalMinutes_{x}')
+    )
+
+    # Calculate total minutes per team
+    total_minutes = (
+        players
+        .groupby('Tm', as_index=False)['MIN']
+        .sum()
+        .rename(columns={'MIN': 'TotalMinutes'})
+    )
+
+    # Merge total minutes with position-specific minutes
+    team_minutes = total_minutes.merge(team_position_minutes, on='Tm', how='left').fillna(0)
+
+    # Sort by TotalMinutes in ascending order
+    team_minutes = team_minutes.sort_values(by='TotalMinutes', ascending=True)
+
+    return team_minutes
 
 def main():
     contest_id = find_first_contest()
