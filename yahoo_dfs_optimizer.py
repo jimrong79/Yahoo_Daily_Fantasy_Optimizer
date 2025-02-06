@@ -1,3 +1,4 @@
+import argparse
 import sys
 from dataclasses import dataclass
 
@@ -14,7 +15,9 @@ from unidecode import unidecode
 
 @dataclass
 class ContestData:
+    site: str
     contest_id: int
+    csv: str
     team_opponents: dict
     inactive_players: dict
     salaries: dict
@@ -400,21 +403,22 @@ def find_first_contest():
         return None
 
 
-def import_contest_data(contest_data: ContestData, csv_path: str = None) -> pd.DataFrame:
+def import_contest_data(contest_data: ContestData) -> pd.DataFrame:
     """
     Imports contest data from Yahoo or DraftKings and populates ContestData attributes.
 
     Parameters:
         contest_data (ContestData): The ContestData instance to populate.
-        csv_path (str, optional): Path to a local CSV file. If provided, data is read from the file instead of a URL.
 
     Returns:
         DataFrame: DataFrame of players from the contest.
     """
     try:
-        if csv_path:
-            players = pd.read_csv(csv_path)
+        if contest_data.site == "dk" and contest_data.csv:
+            # Read from local DraftKings CSV file
+            players = pd.read_csv(contest_data.csv)
         else:
+            # Fetch Yahoo contest data from API
             players_url = f"https://dfyql-ro.sports.yahoo.com/v2/export/contestPlayers?contestId={contest_data.contest_id}"
             players = pd.read_csv(players_url)
     except Exception as e:
@@ -422,39 +426,53 @@ def import_contest_data(contest_data: ContestData, csv_path: str = None) -> pd.D
         return pd.DataFrame()
 
     # Handle DraftKings-specific columns
-    if 'TeamAbbrev' in players.columns:
-        players.rename(columns={'TeamAbbrev': 'Team'}, inplace=True)
+    if contest_data.site == "dk":
+        if 'TeamAbbrev' in players.columns:
+            players.rename(columns={'TeamAbbrev': 'Team'}, inplace=True)
 
-    # Extract Opponent from "Game Info" column based on the player's team
-    if 'Game Info' in players.columns:
-        def get_opponent(row):
-            if '@' in row['Game Info']:
-                teams = row['Game Info'].split('@')
-                home_team = teams[1].split()[0]  # Extract team from second part
-                away_team = teams[0].split()[0]  # Extract team from first part
+        # Extract Opponent from "Game Info" column based on the player's team
+        if 'Game Info' in players.columns:
+            def get_opponent(row):
+                if '@' in row['Game Info']:
+                    teams = row['Game Info'].split('@')
+                    home_team = teams[1].split()[0]  # Extract team from second part
+                    away_team = teams[0].split()[0]  # Extract team from first part
 
-                # Determine the opponent based on player's team
-                if row['Team'] == home_team:
-                    return away_team
-                elif row['Team'] == away_team:
-                    return home_team
-            return None  # Fallback in case of unexpected format
+                    # Determine the opponent based on player's team
+                    if row['Team'] == home_team:
+                        return away_team
+                    elif row['Team'] == away_team:
+                        return home_team
+                return None  # Fallback in case of unexpected format
 
-        players['Opponent'] = players.apply(get_opponent, axis=1)
+            players['Opponent'] = players.apply(get_opponent, axis=1)
 
-    # Team name corrections
+        # Handle multi-position players in DraftKings (e.g., PG/SG → ["PG", "SG"])
+        if 'Position' in players.columns:
+            players['Position'] = players['Position'].str.split('/')
+
+    # Team name corrections (applies to both Yahoo and DraftKings)
     team_name_corrections = {"NY": "NYK", "GS": "GSW", "NO": "NOP", "SA": "SAS", "CHA": "CHO"}
     players.replace({"Team": team_name_corrections, "Opponent": team_name_corrections}, inplace=True)
 
     # Populate ContestData attributes
     for _, player in players.iterrows():
         player_name = formalize_name(player.get("Name", f"{player.get('First Name', '')} {player.get('Last Name', '')}"))
+
         if player.get("Injury Status") in {"INJ", "O", "D"}:
             contest_data.inactive_players[player_name] = 1
+
         if player["Team"] not in contest_data.team_opponents:
             contest_data.team_opponents[player["Team"]] = player["Opponent"]
+
         contest_data.salaries[player_name] = int(player["Salary"])
         contest_data.player_teams[player_name] = player["Team"]
+
+        # # Handle multi-position players for DraftKings
+        # if isinstance(player["Position"], list):
+        #     contest_data.player_positions[player_name] = player["Position"]
+        # else:
+        #     contest_data.player_positions[player_name] = player[["Position"]]
         contest_data.player_positions[player_name] = player["Position"]
 
     return players
@@ -514,13 +532,19 @@ def calculate_team_minutes(players):
     return team_minutes
 
 def main():
-    contest_id = find_first_contest()
-    if not contest_id:
+    parser = argparse.ArgumentParser(description="Yahoo & DraftKings NBA DFS Optimizer")
+    parser.add_argument("--site", choices=["yahoo", "dk"], default="yahoo", help="Select DFS site: 'yahoo' or 'dk' (default: yahoo)")
+    parser.add_argument("--csv", type=str, default="DKSalaries.csv", help="Optional: Path to local CSV file instead of fetching from URL")
+    args = parser.parse_args()
+    contest_id = find_first_contest() if args.site == "yahoo" else None
+    if args.site == "yahoo" and not contest_id:
         print("Exiting due to missing contest ID.")
         return
 
     contest_data = ContestData(
-        contest_id=contest_id,
+        site=args.site,
+        contest_id=contest_id if args.site == "yahoo" else None,
+        csv=args.csv,
         team_opponents={},
         inactive_players={},
         salaries={},
