@@ -166,6 +166,7 @@ def get_last_x_days_per_game(contest_data, days=15):
 
     # Rename columns to match expected format
     last_x_days.rename(columns={"REB": "TRB", "TO": "TOV"}, inplace=True)
+    print(calculate_team_minutes(last_x_days))
 
     # Mark players who don't meet the MIN/GP thresholds as ineligible
     last_x_days['Ineligible'] = False
