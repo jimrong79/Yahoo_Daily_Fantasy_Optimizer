@@ -118,6 +118,7 @@ def formalize_name(name):
         "Taurean Waller-Prince": "Taurean Prince",
         "Mo Bamba": "Mohamed Bamba",
         "Bojan Bogdanović": "Bojan Bogdanovic",
+        "Bobby Portis Jr.": "Bobby Portis"
         # Add more corrections as needed
     }
 
