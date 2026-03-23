@@ -1,65 +1,128 @@
 # Yahoo NBA Daily Fantasy Lineup Optimizer
 
-Personal project to generate Yahoo fantasy lineups.
+This project builds NBA daily fantasy lineups for Yahoo and DraftKings using recent player stats, salary data, matchup adjustments, and linear optimization.
 
-## PREREQUISITES
+It is designed as a personal research tool for generating a strongest-projected lineup from a given slate. The optimizer can pull contest data, gather recent player averages, optionally apply defense-versus-position adjustments, and return a salary-cap-valid lineup.
 
-- Python 3.7+
-- ChromeDriver installed and placed in a location on your system’s PATH  
-  [Download ChromeDriver](https://chromedriver.chromium.org/downloads)
+## Features
 
-## INSTALLING
+- supports both Yahoo and DraftKings slates
+- builds lineups under each site's salary and roster rules
+- uses recent FantasyPros player averages
+- supports pluggable DVP sources
+- can lock players into a lineup
+- can exclude players from the player pool
+- includes a separate script for scraping historical NBA game logs from Basketball Reference
 
-Use the `requirements.txt` file provided to install all necessary packages:
+## Project Files
 
+- `yahoo_dfs_optimizer.py`: main command-line entry point
+- `data_providers.py`: contest import, recent stats, and DVP data loading
+- `lineup_optimizer.py`: fantasy point calculations and lineup optimization
+- `dfs_core.py`: shared normalization and contest data helpers
+- `season_data.py`: historical game-log scraper
+- `requirements.txt`: Python dependencies
+
+## Requirements
+
+- Python 3.10+
+- Google Chrome and ChromeDriver only if using `--dvp-source basketballmonster`
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
+```
 
-## How to use
+If you use Conda, activate your environment first and then run the same install command.
 
-Run the optimizer script:
+## How It Works
 
-python yahoo_dfs_optimizer.py
+The optimizer follows this general flow:
 
-## Introduction
+1. Load the contest player pool from Yahoo or from a DraftKings salary CSV.
+2. Normalize player names, teams, opponents, salaries, and positions.
+3. Pull recent player averages from FantasyPros.
+4. Optionally apply defense-versus-position matchup adjustments.
+5. Solve for the highest projected lineup that satisfies salary cap and roster-slot rules.
 
-Following are the steps taken by the optimizer:
+## Usage
 
-#### READ IN CONTEST DATA:
-Imports Yahoo DFS contest data and normalizes team names. Also identifies injured or out players, and records salaries, teams, and positions for each player.
+### Yahoo
 
-#### GET DEFENSE VERSUS POSITION DATA:
-Uses Selenium to scrape defensive rankings from Basketball Monster, giving insight into favorable or tough matchups.
+Build a Yahoo lineup using Hashtag Basketball DVP data:
 
-#### GET PLAYER STATS:
-Fetches recent (last 15 days) per-game stats from FantasyPros, focusing on current form rather than season-long averages.
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --dvp-source hashtag
+```
 
-#### CALCULATE FANTASY POINTS:
-Adjusts player stats based on DVP and calculates fantasy points following Yahoo DFS scoring:
+Build a Yahoo lineup without DVP adjustments:
 
-PTS: 1.0
-TRB: 1.2
-AST: 1.5
-STL: 3.0
-BLK: 3.0
-TOV: -1.0
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --dvp-source none
+```
 
-#### INITIALIZE PULP MODEL:
-Sets up the PuLP linear programming model to maximize total fantasy points under salary and positional constraints.
+### DraftKings
 
-#### SETUP LPVARIABLES FOR PLAYERS:
-Each player is represented by a binary variable indicating whether they are selected.
+Build a DraftKings lineup from a local salary CSV:
 
-#### INPUT OBJECTIVE FUNCTIONS AND COST CONSTRAINTS:
-Ensures the total cost (salary) stays within the Yahoo DFS limit (e.g., 200).
+```bash
+python yahoo_dfs_optimizer.py --site dk --csv DKSalaries.csv --dvp-source none
+```
 
-#### INPUT PLAYER POSITION CONSTRAINTS:
-Meets daily fantasy contest roster requirements (minimum and maximum players per position).
+### Locking And Excluding Players
 
-#### SOLVE THE PROBLEM AND DISPLAY OUTPUT:
-The LP solver finds an optimal lineup. The script then prints the selected players, total used salary, and projected points.
+Lock players into the lineup:
 
-## OUTCOME
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --select "Nikola Jokic" "Jalen Brunson"
+```
 
-After running the model, you get an optimized lineup based on current player performance and matchups. While not a guaranteed win, it provides a solid starting point for DFS strategy.
+Exclude players from the player pool:
 
-![](/images/winning.jpg)
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --exclude "Player Name"
+```
+
+Adjust the recent-stat sample window:
+
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --days 7
+```
+
+## DVP Sources
+
+The optimizer supports these options:
+
+- `hashtag`: free/public DVP source from Hashtag Basketball
+- `basketballmonster`: Selenium-based Basketball Monster scrape
+- `none`: disables DVP matchup adjustments
+
+Example:
+
+```bash
+python yahoo_dfs_optimizer.py --site yahoo --dvp-source hashtag
+```
+
+## Historical Data Scraper
+
+The project also includes a Basketball Reference scraper for collecting game-level season data.
+
+Example:
+
+```bash
+python season_data.py --season NBA_2025 --output nba_season_game_stats.csv
+```
+
+Optional test run with a limit:
+
+```bash
+python season_data.py --season NBA_2025 --max-games 5
+```
+
+## Notes
+
+- Yahoo contest data is pulled from Yahoo's contest export endpoint.
+- DraftKings input currently comes from a local salary CSV.
+- External sites can change their markup or access rules over time, which may require updates to scraping logic.
+- This project is best treated as a lineup research tool, not a guarantee of DFS results.
